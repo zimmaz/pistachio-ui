@@ -14,6 +14,8 @@ import {
   provenanceFor,
   threatById,
 } from '@/data'
+import { useModelSession } from '@/lib/model-session'
+import { isProposedFor } from '@/lib/model-visibility'
 import { SeverityBadge, StatusBadge } from './Badges'
 import { EntityRef, SourceChip } from './EntityRef'
 import { ProvenanceChain } from './ProvenanceChain'
@@ -45,6 +47,7 @@ export function EntityDetails({ id, onClose }: { id: string; onClose: () => void
 }
 
 function ComponentBody({ id }: { id: string }) {
+  const session = useModelSession()
   const component = componentById.get(id)!
   const threats = THREATS.filter((t) => t.target === id)
   const controls = CONTROLS.filter((c) => c.components.includes(id))
@@ -123,7 +126,9 @@ function ComponentBody({ id }: { id: string }) {
             </span>
           ))}
           <span className="chip chip--mono">
-            {component.proposedInVersion ? `proposed ${component.proposedInVersion}` : `added ${component.addedInVersion}`}
+            {isProposedFor(component, session.currentVersion)
+              ? 'Proposed for v19 · PR #182'
+              : `added ${component.addedInVersion}`}
           </span>
         </div>
       </ContextSection>
@@ -235,6 +240,7 @@ function EntityProvenanceBlock({ id }: { id: string }) {
 }
 
 function ThreatBody({ id }: { id: string }) {
+  const session = useModelSession()
   const threat = threatById.get(id)!
   const target = componentById.get(threat.target)
   const assumptions = ASSUMPTIONS.filter((a) => (threat.assumptions ?? []).includes(a.id))
@@ -245,6 +251,9 @@ function ThreatBody({ id }: { id: string }) {
       <div className="row row--wrap contextPanel__badges">
         <SeverityBadge severity={threat.residual} label={`${threat.residual} residual`} />
         <StatusBadge status={threat.status} />
+        {isProposedFor(threat, session.currentVersion) ? (
+          <span className="chip chip--mono">Proposed for v19 · PR #182</span>
+        ) : null}
       </div>
       {threat.detail ? <p className="contextPanel__desc">{threat.detail}</p> : null}
 

@@ -11,14 +11,15 @@ export type FindingType =
 
 export type FindingStatus =
   | 'Open'
-  | 'Needs review'
   | 'In Review'
   | 'Mitigation Planned'
   | 'Mitigating'
-  | 'Pending approval'
-  | 'Risk accepted'
+  | 'Risk Acceptance Requested'
+  | 'Risk Accepted'
   | 'Resolved'
   | 'Invalid'
+
+export type ModelObjectState = 'approved' | 'proposed' | 'removed' | 'superseded'
 
 export type EvidenceType =
   | 'Architecture'
@@ -46,7 +47,9 @@ export type ReviewType =
   | 'Evidence Conflict'
   | 'Control Change'
 
-export type ReviewStatus = 'Pending' | 'Approved' | 'Rejected' | 'Clarification requested' | 'Edited'
+export type ReviewStatus = 'Awaiting Review' | 'Awaiting Clarification' | 'Approved' | 'Rejected'
+
+export type ReviewRevisionState = 'original' | 'edited'
 
 export type ProvenanceKind =
   | 'Evidence'
@@ -62,6 +65,23 @@ export type ModelDeltaOp = 'added' | 'modified' | 'removed'
 
 export type ActivityVerb = 'Observed' | 'Proposed' | 'Approved' | 'Rejected' | 'Waiting'
 
+export type ProvenanceRelation =
+  | 'supports'
+  | 'contradicts'
+  | 'establishes'
+  | 'derived_from'
+  | 'introduced_by'
+  | 'modified_by'
+  | 'affects'
+  | 'motivates'
+  | 'verifies'
+  | 'invalidates'
+  | 'participates_in'
+
+export type DecisionType = 'Mitigate' | 'Accept Risk' | 'Mark Invalid'
+
+export type RequiredAuthority = 'risk_acceptance' | 'model_publish'
+
 export interface SystemComponent {
   id: string
   name: string
@@ -74,6 +94,7 @@ export interface SystemComponent {
   technologies: string[]
   addedInVersion: string
   proposedInVersion?: string
+  proposalId?: string
   /** Grid position within the architecture canvas, in abstract column/row units. */
   x: number
   y: number
@@ -89,6 +110,7 @@ export interface DataFlow {
   authenticated: boolean
   addedInVersion: string
   proposedInVersion?: string
+  proposalId?: string
   notes?: string
 }
 
@@ -126,6 +148,7 @@ export interface Threat {
   prerequisites?: string[]
   detail?: string
   proposedInVersion?: string
+  proposalId?: string
 }
 
 export interface Control {
@@ -174,6 +197,24 @@ export interface AttackPath {
   preconditions?: string[]
   evidence?: string[]
   proposedInVersion?: string
+  proposalId?: string
+  threatIds?: string[]
+}
+
+export interface GovernanceDecision {
+  id: string
+  type: DecisionType
+  findingId: string
+  riskOwner?: string
+  requestedBy?: string
+  approver?: string
+  justification: string
+  compensatingControls: string[]
+  expires?: string
+  reviewDate?: string
+  status: 'Requested' | 'Approved' | 'Rejected'
+  requiredAuthority?: RequiredAuthority
+  requiredRole?: string
 }
 
 export interface RiskException {
@@ -219,6 +260,7 @@ export interface Finding {
   ticket?: string
   confidence?: EvidenceConfidence
   proposedInVersion?: string
+  proposalId?: string
 }
 
 export interface EvidenceSource {
@@ -338,6 +380,13 @@ export interface ProvenanceNode {
   kind: ProvenanceKind
   title: string
   subtitle?: string
+  relationToNext?: ProvenanceRelation
+}
+
+export interface ProvenanceEdge {
+  sourceId: string
+  targetId: string
+  relation: ProvenanceRelation
 }
 
 export interface EntityProvenance {
@@ -358,12 +407,19 @@ export interface ModelChangeItem {
   label: string
 }
 
+export interface ReviewClarification {
+  question: string
+  requestedFrom: string
+  requestedBy: string
+}
+
 export interface Review {
   id: string
   type: ReviewType
   title: string
   summary: string
   status: ReviewStatus
+  revision?: ReviewRevisionState
   proposedByAgentId: string
   sourceEvidenceId: string
   detectedLabel: string
@@ -375,6 +431,10 @@ export interface Review {
   attackPathDelta?: string
   rationale: string
   evidenceIds: string[]
+  requiredAuthority?: RequiredAuthority
+  requiredRole?: string
+  decisionId?: string
+  clarification?: ReviewClarification
   findingIds: string[]
   changeIds?: string[]
   changes: ModelChangeItem[]

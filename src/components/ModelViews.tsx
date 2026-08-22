@@ -5,7 +5,6 @@ import {
   CURRENT_VERSION,
   DATA_FLOWS,
   MODEL_COMPARISONS,
-  MODEL_VERSIONS,
   PREVIOUS_VERSION,
   PROPOSED_VERSION,
   componentById,
@@ -73,12 +72,17 @@ export function AttackPathsView({
   path: AttackPathModel
   onSelectPath: (id: string) => void
 }) {
+  const session = useModelSession()
   return (
     <div className="pathExplorer">
       <aside className="pathExplorer__list" aria-label="Attack paths">
         <h3 className="def__label">Attack paths</h3>
         <ul>
-          {ATTACK_PATHS.map((candidate) => (
+          {ATTACK_PATHS.map((candidate) => {
+            const proposed = Boolean(candidate.proposedInVersion && candidate.proposedInVersion > session.currentVersion)
+            const changed = candidate.id === 'AP-021'
+            const badge = proposed ? 'Proposed' : changed ? 'Changed' : 'Current'
+            return (
             <li key={candidate.id}>
               <button
                 type="button"
@@ -88,9 +92,11 @@ export function AttackPathsView({
                 <span className="pathPick__id">{candidate.id}</span>
                 <span className="pathPick__name">{candidate.name}</span>
                 <SeverityBadge severity={candidate.severity} bare />
+                <span className="chip chip--mono">{badge}</span>
               </button>
             </li>
-          ))}
+            )
+          })}
         </ul>
       </aside>
       <div className="pathExplorer__main">
@@ -153,10 +159,25 @@ export function ChangesView({
         <div className="panel__head">
           <h2 className="panel__title">Model changes</h2>
           <span className="panel__meta">
-            {session.currentVersion} → {session.webhookApproved ? 'v19 current' : 'proposed v19'}
+            {session.webhookApproved ? 'v18 → v19' : 'v18 → proposed v19'}
           </span>
         </div>
         <div className="panel__body">
+          <div className="defs defs--split">
+            <div>
+              <div className="def__label">Current</div>
+              <div className="def__value">{session.currentVersion}</div>
+            </div>
+            <div>
+              <div className="def__label">{session.webhookApproved ? 'Latest change' : 'Pending'}</div>
+              <div className="def__value">{session.webhookApproved ? 'v18 → v19' : 'v19 proposal'}</div>
+            </div>
+          </div>
+          {session.webhookApproved ? (
+            <p className="prose u-muted">Approved just now. No model changes remain in the PR #182 proposal.</p>
+          ) : (
+            <p className="prose u-muted">Pending proposals are not part of the authoritative model until a human approves them.</p>
+          )}
           <div className="defs defs--split">
             <div>
               <div className="def__label">Triggered by</div>
@@ -167,7 +188,7 @@ export function ChangesView({
             <div>
               <div className="def__label">Status</div>
               <div className="def__value">
-                <StatusBadge status={session.webhookApproved ? 'Approved' : 'Pending approval'} />
+                <StatusBadge status={session.webhookApproved ? 'Approved' : 'Awaiting Review'} />
               </div>
             </div>
           </div>
@@ -183,8 +204,8 @@ export function ChangesView({
             <li className="diffList__item diffList__item--add">
               <span className="diffList__glyph">+</span>2 threats
             </li>
-            <li className="diffList__item diffList__item--add">
-              <span className="diffList__glyph">+</span>2 findings
+            <li className="diffList__item diffList__item--change">
+              <span className="diffList__glyph">·</span>findings remain open
             </li>
             <li className="diffList__item diffList__item--change">
               <span className="diffList__glyph">~</span>1 trust boundary
@@ -217,7 +238,7 @@ export function ChangesView({
               <ul className="diffList">
                 <li className="diffList__item diffList__item--add">
                   <span className="diffList__glyph">+</span>
-                  <EntityRef id="TM-041" /> Replay attack
+                  <EntityRef id="TM-047" /> Replay attack
                 </li>
                 <li className="diffList__item diffList__item--add">
                   <span className="diffList__glyph">+</span>
@@ -226,15 +247,15 @@ export function ChangesView({
               </ul>
             </div>
             <div>
-              <h3 className="def__label">Findings</h3>
+              <h3 className="def__label">Related findings</h3>
               <ul className="diffList">
-                <li className="diffList__item diffList__item--add">
-                  <span className="diffList__glyph">+</span>
-                  <EntityRef id="FIND-107" /> Missing replay protection
+                <li className="diffList__item diffList__item--change">
+                  <span className="diffList__glyph">·</span>
+                  <EntityRef id="FIND-107" /> remains In Review
                 </li>
-                <li className="diffList__item diffList__item--add">
-                  <span className="diffList__glyph">+</span>
-                  <EntityRef id="FIND-109" /> Signature not validated
+                <li className="diffList__item diffList__item--change">
+                  <span className="diffList__glyph">·</span>
+                  <EntityRef id="FIND-109" /> remains Open
                 </li>
               </ul>
             </div>
@@ -252,21 +273,14 @@ export function ChangesView({
             <h2 className="panel__title">Model history</h2>
           </div>
           <ol className="historyList">
-            {session.webhookApproved ? (
-              <li className="historyList__item is-current">
-                <span className="u-mono">v19</span>
-                <span>Current</span>
-                <span>just now</span>
-              </li>
-            ) : null}
-            {MODEL_VERSIONS.map((version, index) => (
+            {session.modelHistory.map((version, index) => (
               <li
                 key={version.version}
-                className={`historyList__item${index === 0 && !session.webhookApproved ? ' is-current' : ''}`}
+                className={`historyList__item${index === 0 ? ' is-current' : ''}`}
               >
                 <button type="button" onClick={() => onCompare(version.version === 'v18' ? 'v17' : version.version)}>
                   <span className="u-mono">{version.version}</span>
-                  <span>{index === 0 && !session.webhookApproved ? 'Current' : version.status ?? ''}</span>
+                  <span>{index === 0 ? 'Current' : version.status ?? ''}</span>
                   <span>{version.createdLabel}</span>
                 </button>
               </li>

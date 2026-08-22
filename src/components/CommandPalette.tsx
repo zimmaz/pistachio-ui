@@ -3,10 +3,12 @@ import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { CornerDownLeft, Search } from 'lucide-react'
 import { SEARCHABLE } from '@/data'
+import { useModelSession } from '@/lib/model-session'
 
 const GROUP_ORDER = ['Finding', 'Threat', 'Component', 'Evidence', 'Attack path', 'Control', 'Asset', 'Risk decision', 'Agent']
 
 export function CommandPalette({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const session = useModelSession()
   const [query, setQuery] = useState('')
   const [cursor, setCursor] = useState(0)
   const navigate = useNavigate()
@@ -96,7 +98,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
 
         <div className="palette__results" id="palette-results" role="listbox" aria-label="Results">
           {results.length === 0 ? (
-            <p className="empty">Nothing in model v18 matches “{query}”.</p>
+            <p className="empty">Nothing in model {session.currentVersion} matches “{query}”.</p>
           ) : (
             results.map((item, index) => {
               const showGroup = item.group !== lastGroup
@@ -134,7 +136,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
           <span>
             <kbd>↵</kbd> open
           </span>
-          <span className="u-muted">Searching model v18</span>
+          <span className="u-muted">Searching model {session.currentVersion}</span>
         </div>
       </div>
     </>,

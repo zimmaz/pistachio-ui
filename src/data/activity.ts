@@ -60,7 +60,7 @@ export const MODEL_ACTIVITY: ActivityEvent[] = [
     kind: 'agent',
     verb: 'Proposed',
     agentId: 'AGT-02',
-    refs: [{ label: 'REV-022', to: '/overview?review=REV-022' }],
+    refs: [{ label: 'ASM-012', to: '/overview?review=REV-027' }],
   },
   {
     id: 'ACT-07',
@@ -123,7 +123,7 @@ export const NOTIFICATIONS: Notification[] = [
   },
   {
     id: 'NTF-03',
-    text: 'Risk exception EXC-021 expires in 6 days',
+    text: 'Risk exception EXC-019 expires in 6 days',
     detail: 'EXC-019 covers queue encryption with a platform-managed key. It lapses on 28 Aug 2026.',
     tone: 'warning',
     to: '/model?view=document#risks',

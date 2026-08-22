@@ -61,7 +61,7 @@ export const EVIDENCE: EvidenceSource[] = [
     ],
     affectedEntities: ['CMP-04', 'CMP-05', 'CMP-00', 'TB-01'],
     modelChange: 'v18 → proposed v19',
-    usedByThreats: ['TM-041', 'TM-048'],
+    usedByThreats: ['TM-047', 'TM-048'],
     usedByFindings: ['FIND-107', 'FIND-109'],
   },
   {

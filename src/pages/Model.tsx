@@ -29,6 +29,7 @@ import { EntityRef, RefList } from '@/components/EntityRef'
 import { ArchitectureView, AttackPathsView, ChangesView, ProposedBanner } from '@/components/ModelViews'
 import { useActiveSection } from '@/lib/hooks'
 import { useModelSession } from '@/lib/model-session'
+import { isProposedFor, visibleObjects } from '@/lib/model-visibility'
 
 const SECTION_IDS = MODEL_SECTIONS.map((s) => s.id)
 const RISKY_PATH = ['CMP-00', 'CMP-04', 'CMP-05', 'CMP-06']
@@ -43,6 +44,7 @@ export function Model() {
   const [params, setParams] = useSearchParams()
   const [versionIndex, setVersionIndex] = useState(0)
   const [selectedStep, setSelectedStep] = useState<number | null>(null)
+  const [docProposed, setDocProposed] = useState(false)
   const active = useActiveSection(SECTION_IDS)
   const { hash } = useLocation()
 
@@ -75,9 +77,24 @@ export function Model() {
     [params, setParams],
   )
 
+  const visibleComponents = useMemo(
+    () => visibleObjects(COMPONENTS, session.currentVersion, docProposed),
+    [docProposed, session.currentVersion],
+  )
+  const visibleFlows = useMemo(
+    () => visibleObjects(DATA_FLOWS, session.currentVersion, docProposed),
+    [docProposed, session.currentVersion],
+  )
+  const visiblePaths = useMemo(
+    () => visibleObjects(ATTACK_PATHS, session.currentVersion, docProposed),
+    [docProposed, session.currentVersion],
+  )
   const sortedThreats = useMemo(
-    () => [...THREATS].sort((a, b) => SEVERITY_RANK[a.residual] - SEVERITY_RANK[b.residual]).slice(0, 14),
-    [],
+    () =>
+      visibleObjects(THREATS, session.currentVersion, docProposed)
+        .sort((a, b) => SEVERITY_RANK[a.residual] - SEVERITY_RANK[b.residual])
+        .slice(0, 14),
+    [docProposed, session.currentVersion],
   )
 
   return (
@@ -194,10 +211,15 @@ export function Model() {
             </p>
           </div>
           <div className="row row--wrap">
-            <span className="chip chip--mono">{METRICS.components} components</span>
-            <span className="chip chip--mono">{METRICS.activeThreats} threats</span>
+            <span className="chip chip--mono">{visibleComponents.length} components</span>
+            <span className="chip chip--mono">{sortedThreats.length} threats</span>
             <span className="chip chip--mono">{METRICS.controls} controls</span>
-            <span className="chip chip--mono">{METRICS.attackPaths} attack paths</span>
+            {session.webhookApproved ? null : (
+              <label className="toggle">
+                <input type="checkbox" checked={docProposed} onChange={(event) => setDocProposed(event.target.checked)} />
+                Show proposed changes
+              </label>
+            )}
           </div>
         </header>
 
@@ -240,16 +262,18 @@ export function Model() {
           <p className="prose">
             External traffic enters through the production API Gateway, which terminates TLS, applies the managed rule
             set and forwards authenticated requests to the Payment API over mutual TLS. The Payment API reads and
-            writes the primary PostgreSQL store and produces payment events onto the queue. Since{' '}
-            <EntityRef id="EV-041" />, the Webhook Service is a second producer on that queue.
+            writes the primary PostgreSQL store and produces payment events onto the queue.
+            {session.webhookApproved || docProposed
+              ? ' PR #182 adds the Webhook Service as a second producer on that queue.'
+              : ' The Webhook Service from PR #182 is proposed for v19 and is hidden until you show proposed changes.'}
           </p>
 
           <div className="graphFrame">
             <ArchitectureGraph
               selectedId={entity}
               onSelect={(id) => patch({ entity: id })}
-              highlightPath={RISKY_PATH}
-              showProposed
+              highlightPath={docProposed || session.webhookApproved ? RISKY_PATH : []}
+              showProposed={docProposed}
               includeApprovedProposal={session.webhookApproved}
               newInVersion="v19"
             />
@@ -275,7 +299,7 @@ export function Model() {
                 </tr>
               </thead>
               <tbody>
-                {COMPONENTS.map((component) => (
+                {visibleComponents.map((component) => (
                   <tr
                     key={component.id}
                     className={entity === component.id ? 'is-selected' : undefined}
@@ -289,7 +313,12 @@ export function Model() {
                     }}
                   >
                     <td className="cell-mono">{component.id}</td>
-                    <td className="cell-primary">{component.name}</td>
+                    <td className="cell-primary">
+                      {component.name}
+                      {isProposedFor(component, session.currentVersion) ? (
+                        <span className="chip chip--mono">Proposed for v19 · PR #182</span>
+                      ) : null}
+                    </td>
                     <td className="cell-nowrap">{component.kind === 'actor' ? 'External actor' : component.kind}</td>
                     <td className="cell-nowrap">
                       {component.exposure === 'Internet-facing' ? (
@@ -371,7 +400,7 @@ export function Model() {
                 </tr>
               </thead>
               <tbody>
-                {DATA_FLOWS.map((flow) => (
+                {visibleFlows.map((flow) => (
                   <tr key={flow.id}>
                     <td className="cell-mono">{flow.id}</td>
                     <td className="cell-primary cell-nowrap">
@@ -380,6 +409,9 @@ export function Model() {
                     <td className="cell-mono">{flow.protocol}</td>
                     <td>
                       {flow.data}
+                      {isProposedFor(flow, session.currentVersion) ? (
+                        <span className="chip chip--mono">Proposed for v19 · PR #182</span>
+                      ) : null}
                       {flow.notes ? <span className="flowNote">{flow.notes}</span> : null}
                     </td>
                     <td className="cell-nowrap">
@@ -428,7 +460,12 @@ export function Model() {
                     }}
                   >
                     <td className="cell-mono">{threat.id}</td>
-                    <td className="cell-primary">{threat.title}</td>
+                    <td className="cell-primary">
+                      {threat.title}
+                      {isProposedFor(threat, session.currentVersion) ? (
+                        <span className="chip chip--mono">Proposed for v19 · PR #182</span>
+                      ) : null}
+                    </td>
                     <td className="cell-nowrap">{threat.category}</td>
                     <td className="cell-nowrap">{componentById.get(threat.target)?.name}</td>
                     <td>{threat.likelihood}</td>
@@ -450,7 +487,7 @@ export function Model() {
           </p>
 
           <div className="pathTabs" role="group" aria-label="Attack paths">
-            {ATTACK_PATHS.map((candidate) => (
+            {visiblePaths.map((candidate) => (
               <button
                 key={candidate.id}
                 type="button"
@@ -462,7 +499,10 @@ export function Model() {
                 }}
               >
                 <span className="pathTab__id">{candidate.id}</span>
-                <span className="pathTab__name">{candidate.name}</span>
+                <span className="pathTab__name">
+                  {candidate.name}
+                  {isProposedFor(candidate, session.currentVersion) ? ' · proposed' : ''}
+                </span>
                 <SeverityBadge severity={candidate.severity} bare />
               </button>
             ))}

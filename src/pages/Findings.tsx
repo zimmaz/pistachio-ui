@@ -49,7 +49,8 @@ export function Findings() {
     setParams(merged, { replace: true })
   }
 
-  const statusOf = (finding: Finding) => decisions[finding.id]?.status ?? finding.status
+  const statusOf = (finding: Finding) =>
+    session.findingDecision(finding.id)?.status ?? decisions[finding.id]?.status ?? finding.status
 
   const rows = useMemo(() => {
     const filtered = FINDINGS.filter((finding) => {
@@ -245,7 +246,7 @@ export function Findings() {
 
       <FindingDetail
         finding={selected}
-        decision={selected ? decisions[selected.id] : undefined}
+        decision={selected ? session.findingDecision(selected.id) ?? decisions[selected.id] : undefined}
         onClose={() => patch({ id: null })}
         onPlanMitigation={() =>
           selected &&
@@ -270,6 +271,8 @@ export function Findings() {
           })
         }
         acceptedRisk={selected ? session.acceptedRisk(selected.id) : undefined}
+        onApproveRisk={() => selected && session.approveRiskAcceptance(selected.id)}
+        onRejectRisk={() => selected && session.rejectRiskAcceptance(selected.id)}
       />
 
       <RiskAcceptanceModal
@@ -278,8 +281,8 @@ export function Findings() {
         onClose={() => setAcceptFor(null)}
         onSubmit={(recordData) => {
           if (acceptFor) {
-            session.recordAcceptedRisk(acceptFor.id, recordData)
-            record(acceptFor, { status: 'Risk accepted', note: recordData.summary })
+            session.requestRiskAcceptance(acceptFor.id, { ...recordData, status: 'Requested' })
+            record(acceptFor, { status: 'Risk Acceptance Requested', note: recordData.summary })
           }
           setAcceptFor(null)
         }}

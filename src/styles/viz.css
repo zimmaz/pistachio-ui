@@ -335,6 +335,17 @@ button.sevDist__row:hover {
   border-top-color: var(--brand-muted);
 }
 
+.graphLegend__swatch--modified {
+  border-top-color: var(--text-faint);
+  background: repeating-linear-gradient(
+    90deg,
+    var(--text-faint),
+    var(--text-faint) 3px,
+    transparent 3px,
+    transparent 6px
+  );
+}
+
 .graphLegend__swatch--risky {
   border-top: 2px dashed var(--risk-high);
 }

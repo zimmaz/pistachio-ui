@@ -76,7 +76,7 @@ export const FINDINGS: Finding[] = [
     mitigation:
       'Validate signed webhook timestamps and reject requests outside an approved replay window. Persist a delivery-identifier ledger and make settlement writes idempotent on the acquirer delivery identifier.',
     controls: ['CTRL-02', 'CTRL-25', 'CTRL-30'],
-    threats: ['TM-041', 'TM-046'],
+    threats: ['TM-047', 'TM-046'],
     evidence: ['EV-041', 'EV-039'],
   },
   {
@@ -88,7 +88,7 @@ export const FINDINGS: Finding[] = [
     targetId: 'CMP-04',
     source: 'PR #182',
     sourceEvidenceId: 'EV-041',
-    status: 'In Review',
+    status: 'Open',
     detectedAt: '2026-08-22T12:06:00Z',
     detectedLabel: '18m ago',
     detectedBy: 'Threat Analysis Agent',
@@ -149,7 +149,7 @@ export const FINDINGS: Finding[] = [
     detectedBy: 'Architecture Agent',
     owner: 'Platform Engineering',
     rationale:
-      'Declared retention on the payment event queue is 14 days. SEC-DATA-07 caps retention of payloads containing payment tokens at 24 hours. The window widened when the Webhook Service began producing full settlement payloads rather than references.',
+      'Declared retention on the payment event queue is 14 days. SEC-DATA-07 caps retention of payloads containing payment tokens at 24 hours. PR #182 would widen the window further if the Webhook Service begins producing full settlement payloads rather than references.',
     mitigation:
       'Reduce queue retention to 24 hours and move the replay window to the settlement store, or strip tokens from the payload and carry a reference instead.',
     controls: ['CTRL-10', 'CTRL-27'],
@@ -187,7 +187,7 @@ export const FINDINGS: Finding[] = [
     targetId: 'CMP-03',
     source: 'Architecture review',
     sourceEvidenceId: 'EV-039',
-    status: 'In Review',
+    status: 'Risk Acceptance Requested',
     detectedAt: '2026-08-18T14:00:00Z',
     detectedLabel: '4d ago',
     detectedBy: 'Threat Analysis Agent',
@@ -211,13 +211,13 @@ export const FINDINGS: Finding[] = [
     targetId: 'CMP-04',
     source: 'Architecture Sync — Aug 22',
     sourceEvidenceId: 'EV-040',
-    status: 'Needs review',
+    status: 'Open',
     detectedAt: '2026-08-22T08:15:00Z',
     detectedLabel: '4h ago',
     detectedBy: 'Meeting Intelligence Agent',
     owner: 'Payments Engineering',
     rationale:
-      'The service went live in production without an owning team or an on-call rotation recorded in the service catalogue. No one is currently paged when the webhook fails closed, which turns an availability event into a silent settlement gap.',
+      'PR #182 proposes the Webhook Service without an owning team or an on-call rotation recorded in the service catalogue. If the proposal is approved without that assignment, a webhook failure becomes a silent settlement gap.',
     mitigation:
       'Register the service in the catalogue with an owning team, an on-call rotation and a documented failure mode before the next settlement cycle.',
     controls: ['CTRL-34'],
@@ -233,7 +233,7 @@ export const FINDINGS: Finding[] = [
     targetId: 'CMP-07',
     source: 'Meeting',
     sourceEvidenceId: 'EV-040',
-    status: 'Needs review',
+    status: 'In Review',
     detectedAt: '2026-08-20T10:05:00Z',
     detectedLabel: '2d ago',
     detectedBy: 'Meeting Intelligence Agent',
@@ -341,7 +341,7 @@ export const FINDINGS: Finding[] = [
     targetId: 'CMP-03',
     source: 'Architecture review',
     sourceEvidenceId: 'EV-030',
-    status: 'Risk accepted',
+    status: 'Risk Accepted',
     detectedAt: '2026-08-10T09:00:00Z',
     detectedLabel: '12d ago',
     detectedBy: 'Threat Analysis Agent',
@@ -363,7 +363,7 @@ export const FINDINGS: Finding[] = [
     targetId: 'CMP-05',
     source: 'Policy scan',
     sourceEvidenceId: 'EV-037',
-    status: 'Risk accepted',
+    status: 'Risk Accepted',
     detectedAt: '2026-07-27T13:20:00Z',
     detectedLabel: '26d ago',
     detectedBy: 'Architecture Agent',
@@ -411,21 +411,19 @@ export const FINDING_TYPES: Finding['type'][] = [
 
 export const FINDING_STATUSES: Finding['status'][] = [
   'Open',
-  'Needs review',
   'In Review',
   'Mitigation Planned',
   'Mitigating',
-  'Pending approval',
-  'Risk accepted',
+  'Risk Acceptance Requested',
+  'Risk Accepted',
   'Resolved',
   'Invalid',
 ]
 
 export const OPEN_STATUSES: Finding['status'][] = [
   'Open',
-  'Needs review',
   'In Review',
   'Mitigation Planned',
   'Mitigating',
-  'Pending approval',
+  'Risk Acceptance Requested',
 ]

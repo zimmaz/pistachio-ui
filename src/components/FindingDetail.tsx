@@ -33,7 +33,10 @@ interface Props {
     expires: string
     justification: string
     reviewDate?: string
+    status?: 'Requested' | 'Approved' | 'Rejected'
   }
+  onApproveRisk?: () => void
+  onRejectRisk?: () => void
 }
 
 export function FindingDetail({
@@ -45,6 +48,8 @@ export function FindingDetail({
   onAcceptRisk,
   onMarkInvalid,
   acceptedRisk,
+  onApproveRisk,
+  onRejectRisk,
 }: Props) {
   if (!finding) return null
 
@@ -52,8 +57,8 @@ export function FindingDetail({
   const path = finding.attackPathId ? attackPathById.get(finding.attackPathId) : null
   const exception = finding.exceptionId ? exceptionById.get(finding.exceptionId) : null
   const target = componentById.get(finding.targetId)
-  const settled = status === 'Invalid' || status === 'Resolved' || status === 'Risk accepted'
-  const approvalPending = status === 'Pending approval'
+  const settled = status === 'Invalid' || status === 'Resolved' || status === 'Risk Accepted'
+  const approvalPending = status === 'Risk Acceptance Requested'
 
   return (
     <Drawer
@@ -84,9 +89,20 @@ export function FindingDetail({
             <Wrench size={13} aria-hidden="true" />
             Mitigate
           </button>
-          <button className="btn" onClick={onAcceptRisk} disabled={settled || approvalPending}>
-            Accept risk
-          </button>
+          {approvalPending && onApproveRisk ? (
+            <button className="btn btn--primary" onClick={onApproveRisk}>
+              Approve risk
+            </button>
+          ) : (
+            <button className="btn" onClick={onAcceptRisk} disabled={settled || approvalPending}>
+              Accept risk
+            </button>
+          )}
+          {approvalPending && onRejectRisk ? (
+            <button className="btn btn--danger" onClick={onRejectRisk}>
+              Reject
+            </button>
+          ) : null}
           <button className="btn btn--danger" onClick={onMarkInvalid} disabled={settled || approvalPending}>
             <Ban size={13} aria-hidden="true" />
             Mark invalid
@@ -131,7 +147,10 @@ export function FindingDetail({
 
       <Section title="Why Pistachio believes this">
         {provenanceFor(finding.id).length > 0 ? (
-          <ProvenanceChain nodes={provenanceFor(finding.id)} />
+          <>
+            <ProvenanceChain nodes={provenanceFor(finding.id)} />
+            {finding.id === 'FIND-112' ? <ProvenanceChain nodes={provenanceFor('FIND-112-support')} /> : null}
+          </>
         ) : (
           <p className="prose">{finding.rationale}</p>
         )}
@@ -191,16 +210,20 @@ export function FindingDetail({
       ) : null}
 
       {acceptedRisk ? (
-        <Section title="Risk accepted">
+        <Section title={acceptedRisk.status === 'Approved' || status === 'Risk Accepted' ? 'Risk accepted' : 'Risk acceptance request'}>
           <div className="exceptionCard">
             <div className="defs defs--split">
-              <Def label="Accepted by">{acceptedRisk.riskOwner}</Def>
-              <Def label="Approved by">{acceptedRisk.securityApprover}</Def>
+              <Def label="Risk owner">{acceptedRisk.riskOwner}</Def>
+              <Def label="Approved by">
+                {acceptedRisk.status === 'Approved' || status === 'Risk Accepted' ? acceptedRisk.securityApprover : 'Awaiting AppSec Director'}
+              </Def>
+              <Def label="Required approver">AppSec Director</Def>
               <Def label="Expires">{acceptedRisk.expires}</Def>
               <Def label="Compensating controls">{acceptedRisk.compensatingControls.length}</Def>
               {acceptedRisk.reviewDate ? <Def label="Review date">{acceptedRisk.reviewDate}</Def> : null}
             </div>
             <p className="prose">{acceptedRisk.justification}</p>
+            <p className="prose u-muted">Agents can recommend treatment. They cannot accept organizational risk.</p>
           </div>
         </Section>
       ) : null}

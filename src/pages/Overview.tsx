@@ -2,7 +2,6 @@ import { Link } from 'react-router-dom'
 import { ArrowRight, ArrowUpRight } from 'lucide-react'
 import {
   METRICS,
-  MODEL_ACTIVITY,
   MODEL_HEALTH,
   OPEN_BY_SEVERITY,
   PROJECT,
@@ -21,8 +20,15 @@ const RISKY_PATH = ['CMP-00', 'CMP-04', 'CMP-05', 'CMP-06']
 export function Overview() {
   const session = useModelSession()
   const pending = session.pendingReviews
+  const clarifying = session.clarificationReviews
   const primary = reviewById.get('REV-021')
   const primaryStatus = session.reviewStatus('REV-021')
+  const modelPending = pending.filter((review) => review.type === 'Model Change').length
+  const findingPending = pending.filter((review) => review.type === 'New Finding' || review.type === 'Finding Update').length
+  const riskPending = pending.filter((review) => review.type === 'Risk Decision').length
+  const assumptionPending = pending.filter(
+    (review) => review.type === 'Unverified Assumption' || review.type === 'Evidence Conflict',
+  ).length
 
   return (
     <div className="page">
@@ -90,17 +96,23 @@ export function Overview() {
           </h2>
           <span className="panel__meta">{pending.length}</span>
         </div>
+        {pending.length === 0 && clarifying.length === 0 ? (
+          <div className="panel__body">
+            <p className="prose">Nothing requires review.</p>
+            <p className="prose u-muted">
+              Current model {session.currentVersion}. Last reviewed {session.lastApprovedLabel}.
+            </p>
+          </div>
+        ) : (
+          <>
         <div className="reviewBreakdown">
-          <span>{pending.filter((r) => r.type === 'Model Change').length} Model changes</span>
-          <span>{pending.filter((r) => r.type === 'New Finding' || r.type === 'Finding Update').length} Findings</span>
-          <span>{pending.filter((r) => r.type === 'Risk Decision').length} Risk decision</span>
-          <span>
-            {pending.filter((r) => r.type === 'Unverified Assumption' || r.type === 'Evidence Conflict').length}{' '}
-            Assumption
-          </span>
+          <span>Model Changes {modelPending}</span>
+          <span>Findings {findingPending}</span>
+          <span>Risk Decisions {riskPending}</span>
+          <span>Assumptions {assumptionPending}</span>
         </div>
         <ul className="reviewQueue">
-          {pending.slice(0, 4).map((review) => (
+          {pending.map((review) => (
             <li key={review.id}>
               <Link className="reviewRow" to={`/overview?review=${review.id}`}>
                 <span className="reviewRow__type">{review.type}</span>
@@ -109,39 +121,64 @@ export function Overview() {
                   <span className="reviewRow__meta">
                     <span className="u-mono">{review.id}</span>
                     <span aria-hidden="true"> · </span>
-                    Proposed by {review.proposedByAgentId === 'AGT-01' ? 'PR Review Agent' : 'Pistachio agent'}
+                    {review.proposedByAgentId === 'AGT-01'
+                      ? 'PR Review Agent'
+                      : review.proposedByAgentId === 'AGT-03'
+                        ? 'Architecture Agent'
+                        : review.proposedByAgentId === 'AGT-04'
+                          ? 'Threat Analysis Agent'
+                          : 'Proposed by agent'}
+                    {review.revision === 'edited' ? ' · Edited' : ''}
+                    {review.riskFrom && review.riskTo ? ` · ${review.riskFrom} → ${review.riskTo}` : ''}
                   </span>
                 </span>
                 <span className="reviewRow__when">{review.detectedLabel}</span>
-                <ArrowRight size={13} className="reviewRow__go" aria-hidden="true" />
+                <span className="reviewRow__go">Review</span>
               </Link>
             </li>
           ))}
         </ul>
-        {primary && primaryStatus === 'Pending' ? (
+        {clarifying.length > 0 ? (
+          <div className="reviewLead">
+            <div className="reviewLead__kicker">
+              Awaiting clarification <span>{clarifying.length}</span>
+            </div>
+            {clarifying.map((review) => (
+              <Link key={review.id} className="reviewRow" to={`/overview?review=${review.id}`}>
+                <span className="reviewRow__type">{review.id}</span>
+                <span className="reviewRow__main">
+                  <span className="reviewRow__title">{review.summary}</span>
+                </span>
+              </Link>
+            ))}
+          </div>
+        ) : null}
+        {primary && primaryStatus === 'Awaiting Review' ? (
           <div className="reviewLead">
             <div className="reviewLead__kicker">
               Model change <span>{primary.detectedLabel}</span>
             </div>
             <p className="reviewLead__title">{primary.summary}</p>
-            <p className="reviewLead__by">Proposed by PR Review Agent</p>
+            <p className="reviewLead__by">PR Review Agent</p>
             <ul className="diffList diffList--tiny">
-              <li className="diffList__item diffList__item--add">Webhook Service</li>
+              <li className="diffList__item diffList__item--add">1 component</li>
               <li className="diffList__item diffList__item--add">2 data flows</li>
               <li className="diffList__item diffList__item--add">2 threats</li>
             </ul>
+            <p className="prose">Security impact Medium → High</p>
             <Link className="btn btn--primary" to="/overview?review=REV-021">
-              Review changes
+              Review
               <ArrowUpRight size={13} aria-hidden="true" />
             </Link>
           </div>
-        ) : (
+        ) : primaryStatus === 'Approved' ? (
           <div className="callout callout--brand" role="status">
             <span>
-              REV-021 approved. Current model is {session.currentVersion}. FIND-107 and FIND-109 remain open for
-              remediation.
+              REV-021 approved. Current model is v19. FIND-107 and FIND-109 remain open for remediation.
             </span>
           </div>
+        ) : null}
+          </>
         )}
       </section>
 
@@ -175,14 +212,14 @@ export function Overview() {
               <div className="def__label">Threat model</div>
               <ul className="diffList diffList--tiny">
                 <li className="diffList__item diffList__item--add">2 threats</li>
-                <li className="diffList__item diffList__item--add">2 findings</li>
+                <li className="diffList__item diffList__item--add">findings stay open</li>
               </ul>
             </div>
             <div>
               <div className="def__label">Risk</div>
               <p className="prose">
                 Medium → High
-                {session.webhookApproved ? ' · now in the approved model' : ' · proposed, not yet approved'}
+                {session.webhookApproved ? ' · accepted in v19' : ' · v18 → proposed v19'}
               </p>
             </div>
           </div>
@@ -299,7 +336,7 @@ export function Overview() {
               </Link>
             </div>
             <div className="panel__body">
-              <ActivityTimeline events={MODEL_ACTIVITY.slice(0, 8)} />
+              <ActivityTimeline events={session.activity.slice(0, 8)} />
             </div>
           </section>
         </div>

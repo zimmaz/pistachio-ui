@@ -275,8 +275,14 @@ export function GraphLegend({
       </li>
       <li>
         <span className="graphLegend__swatch graphLegend__swatch--new" aria-hidden="true" />
-        {proposed ? 'Proposed addition' : 'Added this version'}
+        {proposed ? 'Proposed' : 'Added this version'}
       </li>
+      {proposed ? (
+        <li>
+          <span className="graphLegend__swatch graphLegend__swatch--modified" aria-hidden="true" />
+          Modified
+        </li>
+      ) : null}
       {riskyLabel ? (
         <li>
           <span className="graphLegend__swatch graphLegend__swatch--risky" aria-hidden="true" />

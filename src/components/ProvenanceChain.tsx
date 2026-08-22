@@ -1,4 +1,5 @@
 import { entityLabel, entityRoute, type ProvenanceKind, type ProvenanceNode } from '@/data'
+import { RELATION_LABEL } from '@/lib/model-visibility'
 import { Link } from 'react-router-dom'
 
 const KIND_CLASS: Record<ProvenanceKind, string> = {
@@ -34,7 +35,11 @@ export function ProvenanceChain({
             <span className="provNode__title">{node.title}</span>
             {node.subtitle ? <span className="provNode__sub">{node.subtitle}</span> : null}
           </Link>
-          {index < nodes.length - 1 ? <span className="provChain__arrow" aria-hidden="true" /> : null}
+          {index < nodes.length - 1 ? (
+            <span className="provChain__arrow" aria-hidden="true">
+              {node.relationToNext ? <span className="provChain__rel">{RELATION_LABEL[node.relationToNext]}</span> : null}
+            </span>
+          ) : null}
         </li>
       ))}
     </ol>

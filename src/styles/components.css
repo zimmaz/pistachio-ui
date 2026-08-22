@@ -1042,11 +1042,27 @@
 }
 
 .provChain__arrow {
-  display: block;
-  width: 1px;
-  height: 0.75rem;
-  margin: 0.1rem 0 0.1rem 0.85rem;
-  background: var(--border-strong);
+  display: grid;
+  justify-items: start;
+  width: auto;
+  min-height: 0.75rem;
+  margin: 0.15rem 0 0.15rem 0.85rem;
+  padding-left: 0;
+  border-left: 1px solid var(--border-strong);
+}
+
+.provChain__rel {
+  margin-left: 0.65rem;
+  font-size: 0.625rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.authoritySplit {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-md);
 }
 
 .provNode {

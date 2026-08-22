@@ -1,13 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { ArrowUp, X } from 'lucide-react'
-import {
-  ASSISTANT_ANSWERS,
-  ASSISTANT_FALLBACK,
-  SUGGESTED_PROMPTS,
-  type AssistantBlock,
-} from '@/data/assistant'
-import { PROJECT, attackPathById, findingById } from '@/data'
+import { SUGGESTED_PROMPTS, answerFor, type AssistantBlock } from '@/data/assistant'
+import { attackPathById, findingById } from '@/data'
 import { Link } from 'react-router-dom'
+import { useModelSession } from '@/lib/model-session'
 import { EntityRef, RichText, SourceReference } from './EntityRef'
 import { SeverityBadge } from './Badges'
 import { AttackPathView } from './AttackPath'
@@ -18,23 +14,8 @@ interface Turn {
   blocks: AssistantBlock[] | null
 }
 
-function answerFor(question: string): AssistantBlock[] {
-  const needle = question.trim().toLowerCase()
-  const exact = ASSISTANT_ANSWERS.find((a) => a.question.toLowerCase() === needle)
-  if (exact) return exact.blocks
-
-  const scored = ASSISTANT_ANSWERS.map((answer) => {
-    const words = needle.split(/\s+/).filter((w) => w.length > 3)
-    const target = answer.question.toLowerCase()
-    const hits = words.filter((word) => target.includes(word)).length
-    return { answer, hits }
-  }).sort((a, b) => b.hits - a.hits)
-
-  if (scored[0] && scored[0].hits >= 2) return scored[0].answer.blocks
-  return ASSISTANT_FALLBACK
-}
-
 export function PistachioAssistant({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const session = useModelSession()
   const [turns, setTurns] = useState<Turn[]>([])
   const [draft, setDraft] = useState('')
   const [pending, setPending] = useState(false)
@@ -65,7 +46,9 @@ export function PistachioAssistant({ open, onClose }: { open: boolean; onClose: 
     setDraft('')
     setPending(true)
     window.setTimeout(() => {
-      setTurns((prev) => prev.map((turn) => (turn.id === id ? { ...turn, blocks: answerFor(question) } : turn)))
+      setTurns((prev) =>
+        prev.map((turn) => (turn.id === id ? { ...turn, blocks: answerFor(question, session.webhookApproved) } : turn)),
+      )
       setPending(false)
     }, 420)
   }
@@ -79,7 +62,8 @@ export function PistachioAssistant({ open, onClose }: { open: boolean; onClose: 
         <div>
           <h2 className="assistant__title">Ask Pistachio</h2>
           <p className="assistant__scope">
-            {PROJECT.name} · current model {PROJECT.modelVersion}
+            Current model {session.currentVersion}
+            {session.webhookApproved ? '' : ' · proposed v19 awaiting review'}
           </p>
         </div>
         <button className="btn btn--quiet btn--icon" onClick={onClose} aria-label="Close assistant">
@@ -108,7 +92,7 @@ export function PistachioAssistant({ open, onClose }: { open: boolean; onClose: 
               </div>
             ) : (
               <p className="assistant__pending" aria-live="polite">
-                Reading model {PROJECT.modelVersion}
+                Reading model {session.currentVersion}
                 <span className="assistant__dots" aria-hidden="true">
                   <i />
                   <i />

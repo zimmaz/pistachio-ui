@@ -1,8 +1,9 @@
 import { useCallback, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { Bell, PanelLeft, Search } from 'lucide-react'
-import { METRICS, NOTIFICATIONS, PROJECT } from '@/data'
+import { PROJECT } from '@/data'
 import { useDismissable } from '@/lib/hooks'
+import { useModelSession } from '@/lib/model-session'
 import { NotificationList } from './NotificationPanel'
 
 const TITLES: Record<string, string> = {
@@ -20,6 +21,7 @@ interface Props {
 
 export function TopBar({ onOpenSearch, onToggleSidebar }: Props) {
   const { pathname } = useLocation()
+  const session = useModelSession()
   const [bellOpen, setBellOpen] = useState(false)
   const [environment, setEnvironment] = useState<string>(PROJECT.environment)
   const closeBell = useCallback(() => setBellOpen(false), [])
@@ -27,6 +29,8 @@ export function TopBar({ onOpenSearch, onToggleSidebar }: Props) {
 
   const current = TITLES[pathname] ?? 'Overview'
   const offEnvironment = environment !== PROJECT.environment
+  const unread = session.notifications.length
+  const awaiting = session.liveReviews.length
 
   return (
     <>
@@ -51,10 +55,12 @@ export function TopBar({ onOpenSearch, onToggleSidebar }: Props) {
         </nav>
 
         <div className="topbar__modelState">
-          <span className="topbar__version" title={`Model version ${PROJECT.modelVersion}`}>
-            Model {PROJECT.modelVersion}
+          <span className="topbar__version" title={`Model version ${session.currentVersion}`}>
+            Model {session.currentVersion}
           </span>
-          <span className="topbar__updated">Last updated {PROJECT.lastUpdatedLabel}</span>
+          <span className="topbar__updated">
+            Last updated {session.webhookApproved ? 'just now' : PROJECT.lastUpdatedLabel}
+          </span>
         </div>
 
         <div className="topbar__spacer" />
@@ -90,7 +96,7 @@ export function TopBar({ onOpenSearch, onToggleSidebar }: Props) {
               className={`iconButton${bellOpen ? ' is-active' : ''}`}
               aria-expanded={bellOpen}
               aria-haspopup="true"
-              aria-label={`Notifications, ${NOTIFICATIONS.length} unread`}
+              aria-label={`Notifications, ${unread} unread`}
               onClick={() => setBellOpen((v) => !v)}
             >
               <Bell size={15} aria-hidden="true" />
@@ -101,7 +107,7 @@ export function TopBar({ onOpenSearch, onToggleSidebar }: Props) {
                 <div className="bellPanel__head">
                   <span className="panel__title">Attention</span>
                   <span className="panel__meta">
-                    {METRICS.needsReview} awaiting review · {METRICS.criticalFindings} critical
+                    {awaiting} awaiting review · {session.pendingProposalCount} pending model changes
                   </span>
                 </div>
                 <NotificationList onNavigate={closeBell} />

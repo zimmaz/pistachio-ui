@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { ArrowRight, CircleAlert, Info, TriangleAlert } from 'lucide-react'
-import { NOTIFICATIONS } from '@/data'
+import { useModelSession } from '@/lib/model-session'
 
 const TONE_ICON = {
   critical: CircleAlert,
@@ -9,9 +9,10 @@ const TONE_ICON = {
 } as const
 
 export function NotificationList({ onNavigate }: { onNavigate?: () => void }) {
+  const { notifications } = useModelSession()
   return (
     <ul className="notifList">
-      {NOTIFICATIONS.map((notification) => {
+      {notifications.map((notification) => {
         const Icon = TONE_ICON[notification.tone]
         return (
           <li key={notification.id}>

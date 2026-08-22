@@ -18,7 +18,7 @@ export function Agents() {
     setParams(merged, { replace: true })
   }
 
-  const awaiting = AGENTS.reduce((acc, agent) => acc + agent.proposalsAwaitingReview, 0)
+  const awaiting = session.liveReviews.length
 
   return (
     <div className="page">
@@ -102,26 +102,55 @@ export function Agents() {
 
                       {authority ? (
                         <div className="authorityCard">
-                          <div className="def__label">Authority</div>
-                          <dl className="authorityGrid">
+                          <div className="authoritySplit">
                             <div>
-                              <dt>Can analyze</dt>
-                              <dd>{authority.canAnalyze ? 'Yes' : 'No'}</dd>
+                              <div className="def__label">Can</div>
+                              <ul className="prose">
+                                <li>Analyze evidence</li>
+                                <li>Propose architecture changes</li>
+                                <li>Propose threats</li>
+                                <li>Propose findings</li>
+                              </ul>
                             </div>
                             <div>
-                              <dt>Can create findings</dt>
-                              <dd>{authority.canCreateFindings}</dd>
+                              <div className="def__label">Cannot</div>
+                              <ul className="prose">
+                                <li>Publish authoritative model</li>
+                                <li>Accept risk</li>
+                                <li>Approve exceptions</li>
+                              </ul>
                             </div>
-                            <div>
-                              <dt>Can modify model</dt>
-                              <dd>{authority.canModifyModel ? 'Yes' : 'No'}</dd>
-                            </div>
-                            <div>
-                              <dt>Can accept risk</dt>
-                              <dd>{authority.canAcceptRisk ? 'Yes' : 'No'}</dd>
-                            </div>
-                          </dl>
-                          <p className="prose u-muted">Approval · Human review required</p>
+                          </div>
+                          {agent.id === 'AGT-01' ? (
+                            <dl className="metrics30">
+                              <div>
+                                <dt>Observed</dt>
+                                <dd>3 changes</dd>
+                              </div>
+                              <div>
+                                <dt>Proposed</dt>
+                                <dd>5 model updates</dd>
+                              </div>
+                              <div>
+                                <dt>Triggered</dt>
+                                <dd>Threat Analysis Agent</dd>
+                              </div>
+                              <div>
+                                <dt>Status</dt>
+                                <dd>{session.webhookApproved ? 'Approved' : 'Waiting for review'}</dd>
+                              </div>
+                              {session.webhookApproved ? (
+                                <div>
+                                  <dt>Model impact</dt>
+                                  <dd>v18 → v19</dd>
+                                </div>
+                              ) : null}
+                            </dl>
+                          ) : (
+                            <p className="prose u-muted">
+                              Agents analyze evidence and propose updates. They cannot publish the authoritative model or accept risk.
+                            </p>
+                          )}
                         </div>
                       ) : null}
 
@@ -172,7 +201,17 @@ export function Agents() {
                         </div>
                       ) : null}
 
-                      {agent.proposalsAwaitingReview > 0 ? (
+                      {agent.id === 'AGT-01' && !session.webhookApproved ? (
+                        <div className="callout callout--info">
+                          <span>
+                            REV-021 is waiting for a human to accept or reject. The approved model was not updated.
+                          </span>
+                        </div>
+                      ) : agent.id === 'AGT-01' && session.webhookApproved ? (
+                        <div className="callout callout--info">
+                          <span>REV-021 is approved. Model impact v18 → v19. Related findings remain open.</span>
+                        </div>
+                      ) : agent.proposalsAwaitingReview > 0 ? (
                         <div className="callout callout--info">
                           <span>
                             {agent.proposalsAwaitingReview} proposed change
@@ -197,12 +236,30 @@ export function Agents() {
             <span className="panel__meta">Aug 22 · 12:04 – 12:18</span>
           </div>
           <div className="panel__body">
-            <ActivityTimeline events={AGENT_ACTIVITY} dense />
+            <ActivityTimeline
+              events={
+                session.webhookApproved
+                  ? [
+                      {
+                        id: 'ACT-A-NOW',
+                        at: 'just now',
+                        label: 'just now',
+                        text: 'REV-021 approved. Model impact v18 → v19.',
+                        kind: 'decision' as const,
+                        verb: 'Approved' as const,
+                        refs: [{ label: 'REV-021', to: '/overview?review=REV-021' }],
+                      },
+                      ...AGENT_ACTIVITY.filter((event) => event.id !== 'ACT-A6'),
+                    ]
+                  : AGENT_ACTIVITY
+              }
+              dense
+            />
             <div className="divider divider--gutter" />
             <p className="prose u-muted">
-              The PR Review Agent observed the structural change and proposed it. The Threat Analysis Agent scored the
-              affected subgraph and proposed findings. No agent published a model version. REV-021 is waiting for a
-              human.
+              {session.webhookApproved
+                ? 'REV-021 is approved. Model impact v18 → v19. FIND-107 and FIND-109 remain open operational findings.'
+                : 'The PR Review Agent observed the structural change and proposed it. The Threat Analysis Agent scored the affected subgraph and proposed findings. No agent published a model version. REV-021 is waiting for a human.'}
             </p>
           </div>
         </section>

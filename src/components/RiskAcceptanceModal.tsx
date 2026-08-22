@@ -53,7 +53,7 @@ export function RiskAcceptanceModal({ finding, onClose, onSubmit }: Props) {
     setTouched(true)
     if (justificationInvalid || controlsInvalid) return
     onSubmit({
-      summary: `Risk accepted by ${owner}. Approved by ${approver}. Expires ${formatDate(expires)}.`,
+      summary: `Risk acceptance requested. Owner ${owner}. Required approver ${approver}. Expires ${formatDate(expires)}.`,
       riskOwner: owner,
       securityApprover: approver,
       justification: justification.trim(),
@@ -79,7 +79,7 @@ export function RiskAcceptanceModal({ finding, onClose, onSubmit }: Props) {
             Cancel
           </button>
           <button className="btn btn--primary" onClick={submit}>
-            Accept residual risk
+            Request risk acceptance
           </button>
         </>
       }

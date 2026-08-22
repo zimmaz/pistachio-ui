@@ -25,8 +25,7 @@ export const COMPONENTS: SystemComponent[] = [
       'Third-party payment service provider that posts settlement callbacks to the platform. Outside the production trust boundary and outside Pistachio-observed infrastructure.',
     dataHandled: ['Payment events'],
     technologies: ['HTTPS'],
-    addedInVersion: 'v19',
-    proposedInVersion: 'v19',
+    addedInVersion: 'v4',
     x: 2.72,
     y: 0,
   },
@@ -73,6 +72,7 @@ export const COMPONENTS: SystemComponent[] = [
     technologies: ['Go', 'Terraform'],
     addedInVersion: 'v19',
     proposedInVersion: 'v19',
+    proposalId: 'REV-021',
     x: 2.72,
     y: 1,
   },
@@ -159,6 +159,7 @@ export const DATA_FLOWS: DataFlow[] = [
     authenticated: true,
     addedInVersion: 'v19',
     proposedInVersion: 'v19',
+    proposalId: 'REV-021',
     notes: 'HMAC header is verified but no nonce or timestamp window is enforced.',
   },
   {
@@ -212,6 +213,7 @@ export const DATA_FLOWS: DataFlow[] = [
     authenticated: true,
     addedInVersion: 'v19',
     proposedInVersion: 'v19',
+    proposalId: 'REV-021',
     notes: 'Proposed second producer on the queue. No idempotency key is enforced on ingest.',
   },
   {
@@ -357,13 +359,14 @@ export const THREATS: Threat[] = [
       'Gateway access logs record the full Authorization header on 5xx responses. The log sink is readable by the wider engineering group.',
   },
   {
-    ...t('TM-041', 'Replay attack on acquirer webhook', 'Tampering', 'CMP-04', 'High', 'High', 'high', ['CTRL-02', 'CTRL-30'], ['FIND-107'], ['EV-041', 'EV-039']),
+    ...t('TM-047', 'Replay attack on acquirer webhook', 'Tampering', 'CMP-04', 'High', 'High', 'high', ['CTRL-02', 'CTRL-30'], ['FIND-107'], ['EV-041', 'EV-039']),
     prerequisites: [
       'Attacker observes one signed callback in transit or in a partner log',
       'Callback is replayed inside the (unbounded) signature validity window',
     ],
     assumptions: ['ASM-05'],
     proposedInVersion: 'v19',
+    proposalId: 'REV-021',
     detail:
       'The webhook verifies an HMAC over the body but enforces neither a nonce nor a timestamp window. A captured callback can be replayed indefinitely, producing duplicate settlement events on the queue.',
   },
@@ -394,10 +397,12 @@ export const THREATS: Threat[] = [
   {
     ...t('TM-046', 'Second queue producer bypasses producer-side schema validation', 'Tampering', 'CMP-05', 'Medium', 'Medium', 'medium', ['CTRL-30'], ['FIND-107'], ['EV-041']),
     proposedInVersion: 'v19',
+    proposalId: 'REV-021',
   },
   {
     ...t('TM-048', 'Forged webhook event accepted as settlement', 'Spoofing', 'CMP-04', 'High', 'High', 'high', ['CTRL-02'], ['FIND-109'], ['EV-041']),
     proposedInVersion: 'v19',
+    proposalId: 'REV-021',
     detail:
       'If HMAC verification is not demonstrated in the handler, an unauthenticated caller can mint settlement events that the Event Worker will reconcile.',
   },
@@ -428,7 +433,11 @@ export const THREATS: Threat[] = [
   t('TM-042', 'Metrics endpoint is reachable from the application subnet', 'Information Disclosure', 'CMP-06', 'Low', 'Low', 'low', ['CTRL-08'], [], ['EV-038']),
   t('TM-044', 'Browser idempotency key is not cryptographically unique', 'Tampering', 'CMP-01', 'Low', 'Low', 'low', ['CTRL-25'], ['FIND-094'], ['EV-040']),
   t('TM-045', 'Documented TLS policy trails the deployed policy', 'Repudiation', 'CMP-02', 'Medium', 'Low', 'low', ['CTRL-33'], ['FIND-106'], ['EV-038']),
-  t('TM-047', 'Webhook retry storm from the acquirer saturates the queue', 'Denial of Service', 'CMP-04', 'Low', 'Medium', 'low', ['CTRL-03', 'CTRL-24'], [], ['EV-041']),
+  {
+    ...t('TM-050', 'Webhook retry storm from the acquirer saturates the queue', 'Denial of Service', 'CMP-04', 'Low', 'Medium', 'low', ['CTRL-03', 'CTRL-24'], [], ['EV-041']),
+    proposedInVersion: 'v19',
+    proposalId: 'REV-021',
+  },
 ]
 
 /* ── Controls ──────────────────────────────────────────────────────────── */
@@ -524,7 +533,7 @@ export const ASSUMPTIONS: Assumption[] = [
     status: 'Unverified',
     source: 'EV-040',
     owner: 'Payments Engineering',
-    relatedThreats: ['TM-041'],
+    relatedThreats: ['TM-047'],
   },
   {
     id: 'ASM-06',
@@ -746,6 +755,8 @@ export const ATTACK_PATHS: AttackPath[] = [
       },
     ],
     proposedInVersion: 'v19',
+    proposalId: 'REV-021',
+    threatIds: ['TM-047', 'TM-048'],
     entryPoint: 'Public webhook route POST /webhooks/acquirer',
     preconditions: ['Attacker observes one signed callback', 'No replay window is enforced'],
     evidence: ['EV-041', 'EV-039'],

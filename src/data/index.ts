@@ -14,7 +14,7 @@ import {
   TRUST_BOUNDARIES,
 } from './model'
 import { CURRENT_USER, MODEL_COMPARISONS, MODEL_HEALTH, MODEL_SECTIONS, MODEL_VERSIONS, OTHER_PROJECTS, PROJECT, PROPOSED_VERSION } from './project'
-import { ENTITY_PROVENANCE, FINDING_CONFIDENCE, EVIDENCE_USED_BY, provenanceFor } from './provenance'
+import { ENTITY_PROVENANCE, FINDING_CONFIDENCE, EVIDENCE_USED_BY, PROVENANCE_RELATIONS, provenanceFor } from './provenance'
 import { REVIEWS, REVIEW_TYPES } from './reviews'
 import type { Finding, Severity } from './types'
 
@@ -48,6 +48,7 @@ export {
   OTHER_PROJECTS,
   PROJECT,
   PROPOSED_VERSION,
+  PROVENANCE_RELATIONS,
   REVIEWS,
   REVIEW_TYPES,
   RISK_EXCEPTIONS,
@@ -122,9 +123,9 @@ export const METRICS = {
   attackPaths: ATTACK_PATHS.length,
   unverifiedAssumptions: ASSUMPTIONS.filter((a) => a.status === 'Unverified').length,
   contradictedAssumptions: ASSUMPTIONS.filter((a) => a.status === 'Contradicted').length,
-  needsReview: FINDINGS.filter((f) => f.status === 'Needs review' || f.status === 'In Review').length,
-  pendingReviews: REVIEWS.filter((r) => r.status === 'Pending').length,
-  pendingModelChanges: REVIEWS.filter((r) => r.type === 'Model Change' && r.status === 'Pending').length,
+  needsReview: FINDINGS.filter((f) => f.status === 'In Review').length,
+  pendingReviews: REVIEWS.filter((r) => r.status === 'Awaiting Review' || r.status === 'Awaiting Clarification').length,
+  pendingModelChanges: REVIEWS.filter((r) => r.type === 'Model Change' && (r.status === 'Awaiting Review' || r.status === 'Awaiting Clarification')).length,
   activeAgents: AGENTS.filter((a) => a.state === 'Active').length,
   boundaryCrossings: DATA_FLOWS.filter((f) => f.crossesBoundary).length,
   acceptedRisks: RISK_EXCEPTIONS.filter((e) => e.status === 'Approved').length,

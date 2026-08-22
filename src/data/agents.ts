@@ -130,7 +130,7 @@ export const AGENT_ACTIVITY: ActivityEvent[] = [
     kind: 'agent',
     agentId: 'AGT-04',
     verb: 'Observed',
-    refs: [{ label: 'TM-041', to: '/model?entity=TM-041&view=document' }],
+    refs: [{ label: 'TM-047', to: '/model?entity=TM-047&view=document' }],
   },
   {
     id: 'ACT-A4',
