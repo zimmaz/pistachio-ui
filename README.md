@@ -86,14 +86,13 @@ The supplied lockup (`banner.png`) is a light-background asset: its wordmark is 
 
 | | |
 | --- | --- |
-| Model version | v18 (history back to v14) |
-| Evidence sources | 43 |
-| Active threats | 47 |
-| Controls | 38 |
-| Open findings | 12 — 2 critical, 4 high, 4 medium, 2 low |
+| Model version | session-aware: v18 until REV-021 is approved, then v19 |
+| Evidence sources | derived from `src/data/evidence.ts` |
+| Active threats / controls | derived from the currently visible model version |
+| Open findings | derived from `src/data/findings.ts` |
 | Evidence coverage | 84% |
 
-The narrative spine is **PR #182**, which introduces the Webhook Service. It appears as evidence (`EV-041`), as the trigger for model `v18`, as a new component and two new data flows in the architecture, as the origin of `FIND-107`, in the PR Review Agent's last run, and in the assistant's answers — all pointing at the same record.
+The narrative spine is **PR #182**. It is evidence (`EV-041`) and a **proposal for v19**, not part of authoritative v18. Agents analyze it and create `REV-021`. Human approval publishes **v18 → v19**, which makes the Webhook Service, two data flows, `TM-047`, and `TM-048` authoritative. `FIND-107` / `FIND-109` remain open findings. The same records appear in the PR Review Agent's last run and in Ask Pistachio — and those answers change after approval.
 
 `src/data/index.ts` derives the metrics, builds the id→entity lookups, and owns `entityLabel()` / `entityRoute()`, which is why any identifier rendered anywhere in the app is clickable and lands somewhere sensible.
 

@@ -38,6 +38,7 @@ export const REVIEWS: Review[] = [
       { op: 'modified', group: 'Trust boundaries', id: 'TB-01', label: 'TB-01 now contains an additional external crossing' },
       { op: 'added', group: 'Threats', id: 'TM-047', label: 'TM-047 Replay attack' },
       { op: 'added', group: 'Threats', id: 'TM-048', label: 'TM-048 Forged webhook event' },
+      { op: 'added', group: 'Architecture', id: 'AP-03', label: 'AP-03 Webhook replay path' },
     ],
   },
   {

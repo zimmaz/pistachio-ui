@@ -158,6 +158,8 @@ export interface Control {
   status: 'Implemented' | 'Partial' | 'Planned' | 'Not implemented'
   components: string[]
   verifiedBy: string
+  proposedInVersion?: string
+  proposalId?: string
 }
 
 export interface Assumption {

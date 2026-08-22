@@ -71,7 +71,6 @@ export function Model() {
   )
   const version = history[versionIndex] ?? history[0]
   const viewingHistorical = version.version !== session.currentVersion
-  const path = ATTACK_PATHS.find((p) => p.id === pathId) ?? ATTACK_PATHS[0]
 
   const patch = useCallback(
     (next: Record<string, string | null>) => {
@@ -101,10 +100,24 @@ export function Model() {
     () => visibleObjects(THREATS, session.currentVersion, docProposed),
     [docProposed, session.currentVersion],
   )
+  const visibleControls = useMemo(
+    () =>
+      visibleObjects(CONTROLS, session.currentVersion, docProposed).filter(
+        (control) =>
+          filterVisibleRelations(
+            control.components,
+            (id) => componentById.get(id),
+            session.currentVersion,
+            docProposed,
+          ).length > 0,
+      ),
+    [docProposed, session.currentVersion],
+  )
   const sortedThreats = useMemo(
     () => [...visibleThreats].sort((a, b) => SEVERITY_RANK[a.residual] - SEVERITY_RANK[b.residual]).slice(0, 14),
     [visibleThreats],
   )
+  const path = visiblePaths.find((item) => item.id === pathId) ?? visiblePaths[0] ?? ATTACK_PATHS[0]
 
   return (
     <div className={`modelLayout${entity ? ' has-context' : ''}${view !== 'document' ? ' is-view' : ''}`}>
@@ -223,8 +236,8 @@ export function Model() {
           </div>
           <div className="row row--wrap">
             <span className="chip chip--mono">{visibleComponents.length} components</span>
-            <span className="chip chip--mono">{sortedThreats.length} threats</span>
-            <span className="chip chip--mono">{METRICS.controls} controls</span>
+            <span className="chip chip--mono">{visibleThreats.length} threats</span>
+            <span className="chip chip--mono">{visibleControls.length} controls</span>
             {session.webhookApproved ? null : (
               <label className="toggle">
                 <input type="checkbox" checked={docProposed} onChange={(event) => setDocProposed(event.target.checked)} />
@@ -457,9 +470,9 @@ export function Model() {
 
         <ModelSection id="threats" number="6" title="Threats">
           <p className="prose">
-            {METRICS.activeThreats} active threats are modelled across {METRICS.components} components. The fourteen
-            with the highest residual risk are listed here; select one to open its prerequisites, controls and
-            evidence.
+            {visibleThreats.filter((threat) => threat.status === 'Active').length} active threats are modelled across{' '}
+            {visibleComponents.length} components. The fourteen with the highest residual risk are listed here; select
+            one to open its prerequisites, controls and evidence.
           </p>
           <div className="tableWrap">
             <table className="table table--doc">
@@ -569,8 +582,8 @@ export function Model() {
 
         <ModelSection id="controls" number="8" title="Security Controls">
           <p className="prose">
-            {METRICS.controlsImplemented} of {METRICS.controls} controls are fully implemented. Partial and planned
-            controls are the ones attack paths walk through.
+            {visibleControls.filter((control) => control.status === 'Implemented').length} of {visibleControls.length}{' '}
+            controls are fully implemented. Partial and planned controls are the ones attack paths walk through.
           </p>
           <div className="tableWrap">
             <table className="table table--doc table--static">
@@ -586,20 +599,42 @@ export function Model() {
                 </tr>
               </thead>
               <tbody>
-                {CONTROLS.map((control) => (
+                {visibleControls.map((control) => {
+                  const targets = filterVisibleRelations(
+                    control.components,
+                    (id) => componentById.get(id),
+                    session.currentVersion,
+                    docProposed,
+                  )
+                  return (
                   <tr key={control.id}>
                     <td className="cell-mono">{control.id}</td>
-                    <td className="cell-primary">{control.name}</td>
+                    <td className="cell-primary">
+                      {control.name}
+                      {isProposedForVersion(control, session.currentVersion) ? (
+                        <span className="chip chip--mono">Proposed for v19</span>
+                      ) : null}
+                    </td>
                     <td className="cell-nowrap">{control.family}</td>
                     <td className="cell-nowrap">
                       <StatusBadge status={control.status} />
                     </td>
-                    <td className="cell-mono">{control.components.join(' ')}</td>
+                    <td className="cell-mono">
+                      {targets.map((id) => (
+                        <span key={id}>
+                          {id}
+                          {isProposedForVersion(componentById.get(id) ?? {}, session.currentVersion) ? (
+                            <span className="chip chip--mono"> proposed</span>
+                          ) : null}{' '}
+                        </span>
+                      ))}
+                    </td>
                     <td className="cell-mono">
                       <EntityRef id={control.verifiedBy} />
                     </td>
                   </tr>
-                ))}
+                  )
+                })}
               </tbody>
             </table>
           </div>

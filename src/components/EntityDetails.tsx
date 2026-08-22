@@ -62,7 +62,11 @@ function ComponentBody({ id, showProposed }: { id: string; showProposed: boolean
     session.currentVersion,
     showProposed,
   )
-  const controls = CONTROLS.filter((c) => c.components.includes(id))
+  const controls = visibleRelated(
+    CONTROLS.filter((c) => c.components.includes(id)),
+    session.currentVersion,
+    showProposed,
+  )
   const findings = FINDINGS.filter((f) => f.targetId === id)
   const flows = visibleRelated(
     DATA_FLOWS.filter((f) => f.from === id || f.to === id),
