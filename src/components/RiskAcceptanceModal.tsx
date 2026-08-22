@@ -7,10 +7,20 @@ import { Modal } from './Overlay'
 const OWNERS = ['Payments Director', 'Platform Director', 'Engineering Director', 'Merchant Director']
 const SUGGESTED_CONTROLS = ['VPN-only access', 'IP allowlist', 'Enhanced monitoring', 'Quarterly attestation']
 
+export interface RiskAcceptanceSubmit {
+  summary: string
+  riskOwner: string
+  securityApprover: string
+  justification: string
+  compensatingControls: string[]
+  expires: string
+  reviewDate: string
+}
+
 interface Props {
   finding: Finding | null
   onClose: () => void
-  onSubmit: (summary: string) => void
+  onSubmit: (record: RiskAcceptanceSubmit) => void
 }
 
 /**
@@ -23,7 +33,9 @@ export function RiskAcceptanceModal({ finding, onClose, onSubmit }: Props) {
   const [controls, setControls] = useState<string[]>([])
   const [draftControl, setDraftControl] = useState('')
   const [expires, setExpires] = useState('2026-11-30')
+  const [reviewDate, setReviewDate] = useState('2026-10-15')
   const [touched, setTouched] = useState(false)
+  const approver = 'AppSec Director'
 
   if (!finding) return null
 
@@ -40,9 +52,15 @@ export function RiskAcceptanceModal({ finding, onClose, onSubmit }: Props) {
   const submit = () => {
     setTouched(true)
     if (justificationInvalid || controlsInvalid) return
-    onSubmit(
-      `Risk acceptance requested by Dana Okoye · owner ${owner} · awaiting approval from AppSec Director · expires ${formatDate(expires)}`,
-    )
+    onSubmit({
+      summary: `Risk accepted by ${owner}. Approved by ${approver}. Expires ${formatDate(expires)}.`,
+      riskOwner: owner,
+      securityApprover: approver,
+      justification: justification.trim(),
+      compensatingControls: controls,
+      expires: formatDate(expires),
+      reviewDate: formatDate(reviewDate),
+    })
   }
 
   return (
@@ -61,7 +79,7 @@ export function RiskAcceptanceModal({ finding, onClose, onSubmit }: Props) {
             Cancel
           </button>
           <button className="btn btn--primary" onClick={submit}>
-            Request approval
+            Accept residual risk
           </button>
         </>
       }
@@ -72,6 +90,12 @@ export function RiskAcceptanceModal({ finding, onClose, onSubmit }: Props) {
           Residual risk stays <SeverityBadge severity={finding.severity} bare /> until the mitigation ships. Accepting
           records the decision against a named owner; it does not change the threat model.
         </span>
+      </div>
+
+      <div className="field">
+        <span className="field__label">Security approver</span>
+        <div className="def__value">{approver}</div>
+        <span className="field__hint">A named human must approve. Agents never appear in this field.</span>
       </div>
 
       <div className="field">
@@ -175,6 +199,20 @@ export function RiskAcceptanceModal({ finding, onClose, onSubmit }: Props) {
           onChange={(event) => setExpires(event.target.value)}
         />
         <span className="field__hint">Acceptances lapse automatically. Pistachio reopens the finding on expiry.</span>
+      </div>
+
+      <div className="field">
+        <label className="field__label" htmlFor="risk-review">
+          Review date
+        </label>
+        <input
+          id="risk-review"
+          type="date"
+          className="input"
+          value={reviewDate}
+          min="2026-08-23"
+          onChange={(event) => setReviewDate(event.target.value)}
+        />
       </div>
     </Modal>
   )

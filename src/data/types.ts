@@ -12,6 +12,8 @@ export type FindingType =
 export type FindingStatus =
   | 'Open'
   | 'Needs review'
+  | 'In Review'
+  | 'Mitigation Planned'
   | 'Mitigating'
   | 'Pending approval'
   | 'Risk accepted'
@@ -29,9 +31,36 @@ export type EvidenceType =
 
 export type EvidenceStatus = 'Analyzed' | 'Needs review' | 'Analyzing' | 'Conflict'
 
+export type EvidenceConfidence = 'High' | 'Moderate' | 'Low' | 'Conflicting' | 'Unverified'
+
 export type ComponentKind = 'actor' | 'service' | 'gateway' | 'store' | 'queue'
 
 export type Exposure = 'Internet-facing' | 'Internal' | 'Data layer' | 'External'
+
+export type ReviewType =
+  | 'Model Change'
+  | 'New Finding'
+  | 'Finding Update'
+  | 'Risk Decision'
+  | 'Unverified Assumption'
+  | 'Evidence Conflict'
+  | 'Control Change'
+
+export type ReviewStatus = 'Pending' | 'Approved' | 'Rejected' | 'Clarification requested' | 'Edited'
+
+export type ProvenanceKind =
+  | 'Evidence'
+  | 'Model Entity'
+  | 'Assumption'
+  | 'Threat'
+  | 'Attack Path'
+  | 'Control'
+  | 'Finding'
+  | 'Decision'
+
+export type ModelDeltaOp = 'added' | 'modified' | 'removed'
+
+export type ActivityVerb = 'Observed' | 'Proposed' | 'Approved' | 'Rejected' | 'Waiting'
 
 export interface SystemComponent {
   id: string
@@ -44,6 +73,7 @@ export interface SystemComponent {
   dataHandled: string[]
   technologies: string[]
   addedInVersion: string
+  proposedInVersion?: string
   /** Grid position within the architecture canvas, in abstract column/row units. */
   x: number
   y: number
@@ -58,6 +88,7 @@ export interface DataFlow {
   crossesBoundary: string | null
   authenticated: boolean
   addedInVersion: string
+  proposedInVersion?: string
   notes?: string
 }
 
@@ -94,6 +125,7 @@ export interface Threat {
   assumptions?: string[]
   prerequisites?: string[]
   detail?: string
+  proposedInVersion?: string
 }
 
 export interface Control {
@@ -112,6 +144,12 @@ export interface Assumption {
   source: string
   owner: string
   relatedThreats: string[]
+  establishedFrom?: string
+  contradictedBy?: string
+  impactNote?: string
+  evidenceIds?: string[]
+  relatedPathIds?: string[]
+  relatedFindingIds?: string[]
 }
 
 export interface AttackPathStep {
@@ -132,6 +170,10 @@ export interface AttackPath {
   status: 'Open' | 'Partially mitigated' | 'Mitigated'
   findings: string[]
   steps: AttackPathStep[]
+  entryPoint?: string
+  preconditions?: string[]
+  evidence?: string[]
+  proposedInVersion?: string
 }
 
 export interface RiskException {
@@ -147,6 +189,7 @@ export interface RiskException {
   status: 'Approved' | 'Pending approval' | 'Expired'
   justification: string
   scopeNote?: string
+  reviewDate?: string
 }
 
 export interface Finding {
@@ -170,6 +213,12 @@ export interface Finding {
   threats: string[]
   evidence: string[]
   exceptionId?: string
+  remediationOwner?: string
+  dueDate?: string
+  lastConfirmed?: string
+  ticket?: string
+  confidence?: EvidenceConfidence
+  proposedInVersion?: string
 }
 
 export interface EvidenceSource {
@@ -189,6 +238,25 @@ export interface EvidenceSource {
   detectedChanges: string[]
   affectedEntities: string[]
   modelChange: string | null
+  usedByThreats?: string[]
+  usedByFindings?: string[]
+  usedByAssumptions?: string[]
+  stale?: boolean
+}
+
+export interface AgentAuthority {
+  canAnalyze: boolean
+  canCreateFindings: 'Yes' | 'Proposed only' | 'No'
+  canModifyModel: boolean
+  canAcceptRisk: boolean
+}
+
+export interface AgentMetrics {
+  runs: number
+  proposals: number
+  accepted: number
+  rejected: number
+  pending: number
 }
 
 export interface Agent {
@@ -205,6 +273,9 @@ export interface Agent {
   nextTrigger: string
   runsThisWeek: number
   proposalsAwaitingReview: number
+  trigger?: string
+  authority?: AgentAuthority
+  metrics30d?: AgentMetrics
 }
 
 export interface ActivityEvent {
@@ -215,15 +286,31 @@ export interface ActivityEvent {
   kind: 'model' | 'finding' | 'evidence' | 'agent' | 'decision'
   refs: { label: string; to: string }[]
   agentId?: string
+  verb?: ActivityVerb
 }
 
 export interface ModelVersion {
   version: string
   createdLabel: string
+  createdAt?: string
   trigger: string
   triggerEvidenceId: string
   diff: { added: string[]; changed: string[]; removed: string[] }
   publishedBy: string
+  status?: 'Current' | 'Proposed' | 'Historical'
+}
+
+export interface ModelComparison {
+  from: string
+  to: string
+  architecture: string[]
+  threatsAdded: number
+  threatsRemoved: number
+  controlsAdded: number
+  resolvedFindings: number
+  newFindings: number
+  riskFrom: string
+  riskTo: string
 }
 
 export interface Notification {
@@ -235,8 +322,63 @@ export interface Notification {
   actionLabel: string
 }
 
+export interface FindingDecision {
+  status: FindingStatus
+  note: string
+}
+
 export interface ModelSection {
   id: string
   number: string
   title: string
+}
+
+export interface ProvenanceNode {
+  id: string
+  kind: ProvenanceKind
+  title: string
+  subtitle?: string
+}
+
+export interface EntityProvenance {
+  id: string
+  introducedBy?: string
+  confirmedBy?: string
+  modifiedBy?: string
+  lastVerified?: string
+  supportingEvidence: string[]
+  conflictingEvidence: string[]
+  unverifiedClaims: number
+}
+
+export interface ModelChangeItem {
+  op: ModelDeltaOp
+  group: 'Architecture' | 'Threats' | 'Findings' | 'Trust boundaries' | 'Controls' | 'Assumptions'
+  id?: string
+  label: string
+}
+
+export interface Review {
+  id: string
+  type: ReviewType
+  title: string
+  summary: string
+  status: ReviewStatus
+  proposedByAgentId: string
+  sourceEvidenceId: string
+  detectedLabel: string
+  detectedAt: string
+  securityImpact: string
+  riskFrom?: string
+  riskTo?: string
+  affectedAssets?: string[]
+  attackPathDelta?: string
+  rationale: string
+  evidenceIds: string[]
+  findingIds: string[]
+  changeIds?: string[]
+  changes: ModelChangeItem[]
+  why: string
+  provenance?: ProvenanceNode[]
+  producesVersion?: string
 }

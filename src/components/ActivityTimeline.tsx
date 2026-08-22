@@ -22,6 +22,7 @@ export function ActivityTimeline({ events, dense = false }: { events: ActivityEv
               <Icon size={11} />
             </span>
             <div className="timeline__body">
+              {event.verb ? <span className={`verb verb--${event.verb.toLowerCase()}`}>{event.verb}</span> : null}
               <p className="timeline__text">{event.text}</p>
               {event.refs.length > 0 ? (
                 <div className="timeline__refs">

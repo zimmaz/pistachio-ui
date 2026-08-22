@@ -19,16 +19,25 @@ import {
   TRUST_BOUNDARIES,
   componentById,
   findingById,
+  threatById,
 } from '@/data'
 import { ArchitectureGraph, GraphLegend } from '@/components/ArchitectureGraph'
 import { AttackPathView } from '@/components/AttackPath'
 import { SeverityBadge, StatusBadge } from '@/components/Badges'
 import { EntityDetails } from '@/components/EntityDetails'
 import { EntityRef, RefList } from '@/components/EntityRef'
+import { ArchitectureView, AttackPathsView, ChangesView, ProposedBanner } from '@/components/ModelViews'
 import { useActiveSection } from '@/lib/hooks'
+import { useModelSession } from '@/lib/model-session'
 
 const SECTION_IDS = MODEL_SECTIONS.map((s) => s.id)
 const RISKY_PATH = ['CMP-00', 'CMP-04', 'CMP-05', 'CMP-06']
+const VIEWS = [
+  { id: 'document', label: 'Document' },
+  { id: 'architecture', label: 'Architecture' },
+  { id: 'paths', label: 'Attack Paths' },
+  { id: 'changes', label: 'Changes' },
+] as const
 
 export function Model() {
   const [params, setParams] = useSearchParams()
@@ -44,8 +53,13 @@ export function Model() {
     target?.scrollIntoView({ block: 'start' })
   }, [hash])
 
+  const session = useModelSession()
   const entity = params.get('entity')
   const pathId = params.get('path') ?? ATTACK_PATHS[0].id
+  const view = (params.get('view') as (typeof VIEWS)[number]['id'] | null) ?? 'document'
+  const selectedIsProposed = Boolean(entity && (componentById.get(entity)?.proposedInVersion || threatById.get(entity)?.proposedInVersion))
+  const showProposed = params.get('proposed') === '1' || selectedIsProposed
+  const compare = params.get('compare')
   const version = MODEL_VERSIONS[versionIndex]
   const path = ATTACK_PATHS.find((p) => p.id === pathId) ?? ATTACK_PATHS[0]
 
@@ -67,7 +81,44 @@ export function Model() {
   )
 
   return (
-    <div className={`modelLayout${entity ? ' has-context' : ''}`}>
+    <div className={`modelLayout${entity ? ' has-context' : ''}${view !== 'document' ? ' is-view' : ''}`}>
+      <div className="modelTabs" role="tablist" aria-label="Model views">
+        {VIEWS.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            role="tab"
+            aria-selected={view === item.id}
+            className={`modelTabs__tab${view === item.id ? ' is-active' : ''}`}
+            onClick={() => patch({ view: item.id === 'document' ? null : item.id })}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+
+      {view === 'architecture' ? (
+        <>
+          <ArchitectureView
+            entity={entity}
+            onSelect={(id) => patch({ entity: id, view: 'architecture' })}
+            showProposed={showProposed}
+            onShowProposed={(value) => patch({ proposed: value ? '1' : null, view: 'architecture' })}
+          />
+          {entity ? <EntityDetails id={entity} onClose={() => patch({ entity: null })} /> : null}
+        </>
+      ) : null}
+
+      {view === 'paths' ? (
+        <AttackPathsView path={path} onSelectPath={(id) => patch({ path: id, view: 'paths' })} />
+      ) : null}
+
+      {view === 'changes' ? (
+        <ChangesView compare={compare} onCompare={(value) => patch({ compare: value, view: 'changes' })} />
+      ) : null}
+
+      {view !== 'document' ? null : (
+      <>
       <nav className="modelToc" aria-label="Model contents">
         <div className="modelToc__inner">
           <div className="modelToc__version">
@@ -137,8 +188,9 @@ export function Model() {
           <div>
             <h1 className="pageHead__title">Threat model</h1>
             <p className="pageHead__lede">
-              {PROJECT.name} · {PROJECT.environment}. Maintained continuously from {METRICS.evidenceSources} evidence
-              sources; last published {PROJECT.lastUpdatedLabel}.
+              {PROJECT.name} · {PROJECT.environment}. Current model {session.currentVersion}
+              {session.webhookApproved ? '' : ` · ${session.pendingProposalCount} pending proposals`}. Last approved{' '}
+              {session.lastApprovedLabel}.
             </p>
           </div>
           <div className="row row--wrap">
@@ -162,6 +214,8 @@ export function Model() {
           </div>
         ) : null}
 
+        <ProposedBanner />
+
         <ModelSection id="system-overview" number="1" title="System Overview">
           <p className="prose">
             The {PROJECT.name} accepts card payments from the customer-facing checkout client, authorizes them through
@@ -169,9 +223,9 @@ export function Model() {
             single production account, with two trust boundaries: the production edge and the data layer.
           </p>
           <p className="prose">
-            Since model {CURRENT_VERSION.version} the platform also accepts inbound settlement callbacks from the
-            acquirer. That is the first flow in the system where an external party initiates the request rather than
-            responding to one, and it is the reason the boundary crossing count moved from two to three.
+            {session.webhookApproved
+              ? 'Model v19 now includes inbound settlement callbacks from the acquirer. That is the first flow where an external party initiates the request rather than responding to one.'
+              : 'PR #182 proposes inbound settlement callbacks from the acquirer. That change is not in the approved v18 model. Agents proposed it; REV-021 is waiting for a human.'}
           </p>
           <div className="callout callout--brand">
             <span>
@@ -195,7 +249,9 @@ export function Model() {
               selectedId={entity}
               onSelect={(id) => patch({ entity: id })}
               highlightPath={RISKY_PATH}
-              newInVersion="v18"
+              showProposed
+              includeApprovedProposal={session.webhookApproved}
+              newInVersion="v19"
             />
           </div>
           <div className="graphFrame__foot">
@@ -486,7 +542,11 @@ export function Model() {
           </p>
           <ul className="assumptionList">
             {ASSUMPTIONS.map((assumption) => (
-              <li key={assumption.id} className={`assumptionRow assumptionRow--${assumption.status.toLowerCase()}`}>
+              <li
+                key={assumption.id}
+                className={`assumptionRow assumptionRow--${assumption.status.toLowerCase()}${entity === assumption.id ? ' is-selected' : ''}`}
+                onClick={() => patch({ entity: assumption.id })}
+              >
                 <div className="assumptionRow__head">
                   <EntityRef id={assumption.id} />
                   <StatusBadge status={assumption.status} />
@@ -566,6 +626,8 @@ export function Model() {
       </article>
 
       {entity ? <EntityDetails id={entity} onClose={() => patch({ entity: null })} /> : null}
+      </>
+      )}
     </div>
   )
 }

@@ -9,6 +9,10 @@ interface Props {
   compact?: boolean
   /** Component ids added in the current model version, marked with a delta tick. */
   newInVersion?: string
+  /** When false, proposed-v19 entities are omitted. */
+  showProposed?: boolean
+  /** Treat proposed entities as current (after REV-021 approval). */
+  includeApprovedProposal?: boolean
 }
 
 const KIND_LABEL: Record<SystemComponent['kind'], string> = {
@@ -25,6 +29,8 @@ export function ArchitectureGraph({
   highlightPath = [],
   compact = false,
   newInVersion,
+  showProposed = true,
+  includeApprovedProposal = false,
 }: Props) {
   const geo = compact
     ? { colUnit: 176, rowUnit: 62, originX: 34, originY: 30, nodeW: 132, nodeH: 34, pad: 26 }
@@ -36,9 +42,27 @@ export function ArchitectureGraph({
   const width = cx(2.72) + geo.nodeW / 2 + geo.pad
   const height = cy(4) + geo.nodeH / 2 + geo.pad
 
+  const visibleComponents = useMemo(
+    () =>
+      COMPONENTS.filter((component) => {
+        if (!component.proposedInVersion) return true
+        return showProposed || includeApprovedProposal
+      }),
+    [showProposed, includeApprovedProposal],
+  )
+
+  const visibleFlows = useMemo(
+    () =>
+      DATA_FLOWS.filter((flow) => {
+        if (!flow.proposedInVersion) return true
+        return showProposed || includeApprovedProposal
+      }),
+    [showProposed, includeApprovedProposal],
+  )
+
   const nodes = useMemo(
     () =>
-      COMPONENTS.map((component) => ({
+      visibleComponents.map((component) => ({
         component,
         x: cx(component.x) - geo.nodeW / 2,
         y: cy(component.y) - geo.nodeH / 2,
@@ -46,7 +70,7 @@ export function ArchitectureGraph({
         cy: cy(component.y),
       })),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [compact],
+    [compact, visibleComponents],
   )
 
   const nodeById = useMemo(() => new Map(nodes.map((n) => [n.component.id, n])), [nodes])
@@ -61,7 +85,7 @@ export function ArchitectureGraph({
 
   const parallelIndex = useMemo(() => {
     const groups = new Map<string, string[]>()
-    for (const flow of DATA_FLOWS) {
+    for (const flow of visibleFlows) {
       const key = `${flow.from}→${flow.to}`
       groups.set(key, [...(groups.get(key) ?? []), flow.id])
     }
@@ -70,7 +94,7 @@ export function ArchitectureGraph({
       ids.forEach((id, index) => map.set(id, { index, total: ids.length }))
     }
     return map
-  }, [])
+  }, [visibleFlows])
 
   const edgePath = (flow: DataFlow) => {
     const a = nodeById.get(flow.from)
@@ -129,15 +153,16 @@ export function ArchitectureGraph({
         )
       })}
 
-      {DATA_FLOWS.map((flow) => {
+      {visibleFlows.map((flow) => {
         const d = edgePath(flow)
         if (!d) return null
         const risky = highlightEdges.has(`${flow.from}→${flow.to}`)
+        const proposed = Boolean(flow.proposedInVersion) && !includeApprovedProposal
         const isNew = newInVersion !== undefined && flow.addedInVersion === newInVersion
         return (
           <g
             key={flow.id}
-            className={`archGraph__edge${risky ? ' is-risky' : ''}${isNew ? ' is-new' : ''}`}
+            className={`archGraph__edge${risky ? ' is-risky' : ''}${isNew || proposed ? ' is-new' : ''}${proposed ? ' is-proposed' : ''}`}
           >
             <title>{`${flow.id} · ${flow.protocol} · ${flow.data}`}</title>
             <path d={d} markerEnd="url(#arw)" />
@@ -149,6 +174,8 @@ export function ArchitectureGraph({
         const selected = selectedId === component.id
         const inPath = highlightPath.includes(component.id)
         const isNew = newInVersion !== undefined && component.addedInVersion === newInVersion
+        const proposed = Boolean(component.proposedInVersion) && !includeApprovedProposal
+        const modified = component.id === 'CMP-05' && (showProposed || includeApprovedProposal) && !includeApprovedProposal
         const interactive = Boolean(onSelect)
 
         return (
@@ -160,6 +187,8 @@ export function ArchitectureGraph({
               selected ? 'is-selected' : '',
               inPath ? 'is-inPath' : '',
               interactive ? 'is-interactive' : '',
+              proposed ? 'is-proposed' : '',
+              modified ? 'is-modified' : '',
             ]
               .filter(Boolean)
               .join(' ')}
@@ -205,9 +234,9 @@ export function ArchitectureGraph({
               </text>
             )}
 
-            {isNew ? (
+            {isNew || proposed ? (
               <text className="archGraph__new" x={geo.nodeW - 8} y={compact ? 15 : 19} textAnchor="end">
-                NEW
+                {proposed ? '+' : 'NEW'}
               </text>
             ) : null}
 
@@ -227,7 +256,13 @@ export function ArchitectureGraph({
   )
 }
 
-export function GraphLegend({ riskyLabel }: { riskyLabel?: string }) {
+export function GraphLegend({
+  riskyLabel,
+  proposed = false,
+}: {
+  riskyLabel?: string
+  proposed?: boolean
+}) {
   return (
     <ul className="graphLegend">
       <li>
@@ -240,7 +275,7 @@ export function GraphLegend({ riskyLabel }: { riskyLabel?: string }) {
       </li>
       <li>
         <span className="graphLegend__swatch graphLegend__swatch--new" aria-hidden="true" />
-        Added in v18
+        {proposed ? 'Proposed addition' : 'Added this version'}
       </li>
       {riskyLabel ? (
         <li>

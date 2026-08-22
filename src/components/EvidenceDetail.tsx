@@ -1,8 +1,9 @@
 import { GitCommitVertical } from 'lucide-react'
-import { agentById, findingById, type EvidenceSource } from '@/data'
+import { EVIDENCE_USED_BY, agentById, assumptionById, findingById, provenanceFor, type EvidenceSource } from '@/data'
 import { SeverityBadge, StatusBadge } from './Badges'
 import { EntityRef } from './EntityRef'
 import { Def, Drawer, Section } from './Overlay'
+import { ProvenanceChain } from './ProvenanceChain'
 
 const CHANGE_TONE = (entry: string) => {
   if (entry.startsWith('+')) return 'add'
@@ -94,11 +95,53 @@ export function EvidenceDetail({ evidence, onClose }: { evidence: EvidenceSource
         )}
       </Section>
 
+      {(() => {
+        const used = EVIDENCE_USED_BY[evidence.id]
+        if (!used && evidence.affectedEntities.length === 0) return null
+        return (
+          <Section title="Used by Pistachio">
+            {used ? (
+              <div className="defs defs--split">
+                <Def label="Model entities">
+                  {used.entities.map((id) => (
+                    <EntityRef key={id} id={id} />
+                  ))}
+                </Def>
+                <Def label="Threats">
+                  {used.threats.length ? used.threats.map((id) => <EntityRef key={id} id={id} />) : '—'}
+                </Def>
+                <Def label="Findings">
+                  {used.findings.length ? used.findings.map((id) => <EntityRef key={id} id={id} />) : '—'}
+                </Def>
+                <Def label="Model versions">{used.versions}</Def>
+              </div>
+            ) : null}
+            {evidence.usedByAssumptions?.length ? (
+              <p className="prose">
+                Assumptions{' '}
+                {evidence.usedByAssumptions.map((id) => (
+                  <EntityRef key={id} id={id} />
+                ))}
+                {evidence.usedByAssumptions
+                  .map((id) => assumptionById.get(id))
+                  .filter(Boolean)
+                  .map((assumption) =>
+                    assumption?.status === 'Contradicted' ? (
+                      <span key={assumption.id}> — {assumption.id} is contradicted by this source.</span>
+                    ) : null,
+                  )}
+              </p>
+            ) : null}
+            {provenanceFor(evidence.id).length > 0 ? <ProvenanceChain nodes={provenanceFor(evidence.id)} /> : null}
+          </Section>
+        )
+      })()}
+
       <Section title="Provenance">
         <p className="prose u-muted">
           {evidence.modelChange
-            ? `This source moved the model ${evidence.modelChange}. Every entity above can be traced back to it.`
-            : 'This source informed the model without changing a version. It is retained as supporting evidence for the controls and assumptions that cite it.'}
+            ? `This source proposed ${evidence.modelChange}. Agents analyzed it; a human still has to approve the model change.`
+            : 'This source informed the model without publishing a version. It is retained as supporting or contradicting evidence for the objects that cite it.'}
         </p>
       </Section>
     </Drawer>

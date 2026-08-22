@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Outlet, useLocation } from 'react-router-dom'
+import { Outlet, useLocation, useSearchParams } from 'react-router-dom'
 import { BANNER_CSS_VAR } from '@/lib/brand'
 import { useShortcut, useStickyBoolean } from '@/lib/hooks'
+import { ModelSessionProvider } from '@/lib/model-session'
 import { CommandPalette } from './CommandPalette'
 import { PistachioAssistant } from './PistachioAssistant'
+import { ReviewDetail } from './ReviewDetail'
 import { Sidebar } from './Sidebar'
 import { TopBar } from './TopBar'
 
@@ -15,6 +17,8 @@ export function AppShell() {
   const [assistantOpen, setAssistantOpen] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const { pathname } = useLocation()
+  const [params, setParams] = useSearchParams()
+  const reviewId = params.get('review')
 
   useShortcut('k', () => setPaletteOpen((v) => !v))
   useShortcut('j', () => setAssistantOpen((v) => !v))
@@ -27,6 +31,7 @@ export function AppShell() {
   const closeAssistant = useCallback(() => setAssistantOpen(false), [])
 
   return (
+    <ModelSessionProvider>
     <div
       className={[
         'shell',
@@ -71,6 +76,15 @@ export function AppShell() {
 
       <CommandPalette open={paletteOpen} onClose={closePalette} />
       <PistachioAssistant open={assistantOpen} onClose={closeAssistant} />
+      <ReviewDetail
+        reviewId={reviewId}
+        onClose={() => {
+          const next = new URLSearchParams(params)
+          next.delete('review')
+          setParams(next, { replace: true })
+        }}
+      />
     </div>
+    </ModelSessionProvider>
   )
 }

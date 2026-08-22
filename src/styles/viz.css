@@ -277,6 +277,18 @@ button.sevDist__row:hover {
   stroke-width: 1.75;
 }
 
+.archGraph__node.is-proposed .archGraph__box {
+  stroke: var(--brand-muted);
+}
+
+.archGraph__node.is-modified .archGraph__box {
+  stroke-dasharray: 3 2;
+}
+
+.archGraph__edge.is-proposed path {
+  stroke: var(--brand-muted);
+}
+
 .archGraph__node:focus {
   outline: none;
 }

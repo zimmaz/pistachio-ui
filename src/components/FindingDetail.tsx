@@ -1,33 +1,51 @@
-import { Ban, CircleCheck, ShieldQuestion, Wrench } from 'lucide-react'
+import { Ban, CircleCheck, ClipboardList, ShieldQuestion, Wrench } from 'lucide-react'
 import {
+  FINDING_CONFIDENCE,
   attackPathById,
   componentById,
   controlById,
   exceptionById,
+  provenanceFor,
   threatById,
   type Finding,
-  type FindingStatus,
+  type FindingDecision,
 } from '@/data'
 import { AttackPathView } from './AttackPath'
 import { SeverityBadge, StatusBadge } from './Badges'
-import { EntityRef, SourceReference } from './EntityRef'
+import { EntityRef, SourceChip, SourceReference } from './EntityRef'
 import { Def, Drawer, Section } from './Overlay'
+import { ConfidenceRow, ProvenanceChain } from './ProvenanceChain'
 
-export interface Decision {
-  status: FindingStatus
-  note: string
-}
+export type Decision = FindingDecision
 
 interface Props {
   finding: Finding | null
   decision?: Decision
   onClose: () => void
   onMitigate: () => void
+  onPlanMitigation?: () => void
   onAcceptRisk: () => void
   onMarkInvalid: () => void
+  acceptedRisk?: {
+    riskOwner: string
+    securityApprover: string
+    compensatingControls: string[]
+    expires: string
+    justification: string
+    reviewDate?: string
+  }
 }
 
-export function FindingDetail({ finding, decision, onClose, onMitigate, onAcceptRisk, onMarkInvalid }: Props) {
+export function FindingDetail({
+  finding,
+  decision,
+  onClose,
+  onMitigate,
+  onPlanMitigation,
+  onAcceptRisk,
+  onMarkInvalid,
+  acceptedRisk,
+}: Props) {
   if (!finding) return null
 
   const status = decision?.status ?? finding.status
@@ -56,6 +74,12 @@ export function FindingDetail({ finding, decision, onClose, onMitigate, onAccept
             <ShieldQuestion size={13} aria-hidden="true" />
             Decision
           </span>
+          {onPlanMitigation ? (
+            <button className="btn" onClick={onPlanMitigation} disabled={settled || approvalPending}>
+              <ClipboardList size={13} aria-hidden="true" />
+              Plan mitigation
+            </button>
+          ) : null}
           <button className="btn btn--primary" onClick={onMitigate} disabled={settled || approvalPending}>
             <Wrench size={13} aria-hidden="true" />
             Mitigate
@@ -86,13 +110,36 @@ export function FindingDetail({ finding, decision, onClose, onMitigate, onAccept
           {target ? <EntityRef id={target.id} /> : null} {finding.target}
         </Def>
         <Def label="Owner">{finding.owner}</Def>
+        {finding.remediationOwner ? <Def label="Remediation owner">{finding.remediationOwner}</Def> : null}
+        {finding.dueDate ? <Def label="Due">{finding.dueDate}</Def> : null}
         <Def label="Detected by">{finding.detectedBy}</Def>
-        <Def label="Detected">
+        <Def label="First detected">
           {finding.detectedLabel} · from <EntityRef id={finding.sourceEvidenceId} />
         </Def>
+        {finding.lastConfirmed ? <Def label="Last confirmed">{finding.lastConfirmed}</Def> : null}
+        {finding.ticket ? <Def label="Linked ticket">{finding.ticket}</Def> : null}
       </div>
 
-      <Section title="Why this matters">
+      {finding.threats[0] ? (
+        <Section title="Threat">
+          <div className="controlList__item">
+            <EntityRef id={finding.threats[0]} />
+            <span className="controlList__name">{threatById.get(finding.threats[0])?.title}</span>
+          </div>
+        </Section>
+      ) : null}
+
+      <Section title="Why Pistachio believes this">
+        {provenanceFor(finding.id).length > 0 ? (
+          <ProvenanceChain nodes={provenanceFor(finding.id)} />
+        ) : (
+          <p className="prose">{finding.rationale}</p>
+        )}
+        <ConfidenceRow
+          confidence={finding.confidence ?? FINDING_CONFIDENCE[finding.id] ?? 'Moderate'}
+          supporting={finding.evidence.length}
+          conflicting={finding.type === 'Evidence Conflict' ? 1 : 0}
+        />
         <p className="prose">{finding.rationale}</p>
       </Section>
 
@@ -143,6 +190,21 @@ export function FindingDetail({ finding, decision, onClose, onMitigate, onAccept
         </Section>
       ) : null}
 
+      {acceptedRisk ? (
+        <Section title="Risk accepted">
+          <div className="exceptionCard">
+            <div className="defs defs--split">
+              <Def label="Accepted by">{acceptedRisk.riskOwner}</Def>
+              <Def label="Approved by">{acceptedRisk.securityApprover}</Def>
+              <Def label="Expires">{acceptedRisk.expires}</Def>
+              <Def label="Compensating controls">{acceptedRisk.compensatingControls.length}</Def>
+              {acceptedRisk.reviewDate ? <Def label="Review date">{acceptedRisk.reviewDate}</Def> : null}
+            </div>
+            <p className="prose">{acceptedRisk.justification}</p>
+          </div>
+        </Section>
+      ) : null}
+
       {exception ? (
         <Section title="Recorded decision">
           <div className="exceptionCard">
@@ -166,6 +228,11 @@ export function FindingDetail({ finding, decision, onClose, onMitigate, onAccept
       ) : null}
 
       <SourceReference ids={finding.evidence} label="Evidence" />
+      <div className="sourceChipRow">
+        {finding.evidence.map((id) => (
+          <SourceChip key={id} id={id} />
+        ))}
+      </div>
     </Drawer>
   )
 }

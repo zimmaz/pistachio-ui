@@ -4,14 +4,19 @@ import {
   ASSUMPTIONS,
   CONTROLS,
   DATA_FLOWS,
+  ENTITY_PROVENANCE,
   FINDINGS,
   THREATS,
+  assumptionById,
   componentById,
   controlById,
+  evidenceById,
+  provenanceFor,
   threatById,
 } from '@/data'
 import { SeverityBadge, StatusBadge } from './Badges'
-import { EntityRef } from './EntityRef'
+import { EntityRef, SourceChip } from './EntityRef'
+import { ProvenanceChain } from './ProvenanceChain'
 
 /**
  * The Model page's right-hand context panel. It only appears once something is
@@ -20,6 +25,7 @@ import { EntityRef } from './EntityRef'
 export function EntityDetails({ id, onClose }: { id: string; onClose: () => void }) {
   const component = componentById.get(id)
   const threat = threatById.get(id)
+  const assumption = assumptionById.get(id)
 
   return (
     <aside className="contextPanel" aria-label="Selection details">
@@ -32,7 +38,8 @@ export function EntityDetails({ id, onClose }: { id: string; onClose: () => void
 
       {component ? <ComponentBody id={id} /> : null}
       {threat ? <ThreatBody id={id} /> : null}
-      {!component && !threat ? <p className="empty">Nothing selected.</p> : null}
+      {assumption ? <AssumptionBody id={id} /> : null}
+      {!component && !threat && !assumption ? <p className="empty">Nothing selected.</p> : null}
     </aside>
   )
 }
@@ -115,10 +122,115 @@ function ComponentBody({ id }: { id: string }) {
               {tech}
             </span>
           ))}
-          <span className="chip chip--mono">added {component.addedInVersion}</span>
+          <span className="chip chip--mono">
+            {component.proposedInVersion ? `proposed ${component.proposedInVersion}` : `added ${component.addedInVersion}`}
+          </span>
         </div>
       </ContextSection>
+
+      <EntityProvenanceBlock id={id} />
     </div>
+  )
+}
+
+function AssumptionBody({ id }: { id: string }) {
+  const assumption = assumptionById.get(id)!
+  const chain = provenanceFor(id)
+
+  return (
+    <div className="contextPanel__body">
+      <h3 className="contextPanel__title">{assumption.id}</h3>
+      <p className="contextPanel__desc">{assumption.statement}</p>
+      <StatusBadge status={assumption.status} />
+
+      <dl className="contextStats">
+        <div>
+          <dt>Originally established from</dt>
+          <dd>
+            {assumption.establishedFrom ? (
+              <SourceChip id={assumption.establishedFrom} />
+            ) : (
+              <EntityRef id={assumption.source} />
+            )}
+          </dd>
+        </div>
+        {assumption.contradictedBy ? (
+          <div>
+            <dt>Contradicted by</dt>
+            <dd>
+              <SourceChip id={assumption.contradictedBy} />
+            </dd>
+          </div>
+        ) : null}
+        {assumption.impactNote ? (
+          <div>
+            <dt>Impact</dt>
+            <dd>{assumption.impactNote}</dd>
+          </div>
+        ) : null}
+      </dl>
+
+      {chain.length > 0 ? (
+        <ContextSection title="Provenance">
+          <ProvenanceChain nodes={chain} />
+        </ContextSection>
+      ) : null}
+    </div>
+  )
+}
+
+function EntityProvenanceBlock({ id }: { id: string }) {
+  const record = ENTITY_PROVENANCE[id]
+  if (!record) return null
+  return (
+    <ContextSection title="Provenance">
+      <dl className="contextStats">
+        {record.introducedBy ? (
+          <div>
+            <dt>Introduced by</dt>
+            <dd>
+              <EntityRef id={record.introducedBy} /> {evidenceById.get(record.introducedBy)?.name}
+            </dd>
+          </div>
+        ) : null}
+        {record.confirmedBy ? (
+          <div>
+            <dt>Confirmed by</dt>
+            <dd>
+              <EntityRef id={record.confirmedBy} /> {evidenceById.get(record.confirmedBy)?.name}
+            </dd>
+          </div>
+        ) : null}
+        {record.modifiedBy ? (
+          <div>
+            <dt>Modified by</dt>
+            <dd>
+              <EntityRef id={record.modifiedBy} />
+            </dd>
+          </div>
+        ) : null}
+        {record.lastVerified ? (
+          <div>
+            <dt>Last verified</dt>
+            <dd>{record.lastVerified}</dd>
+          </div>
+        ) : null}
+      </dl>
+      <div className="countGrid">
+        <span className="countCell">
+          <span className="countCell__value">{record.supportingEvidence.length}</span>
+          <span className="countCell__label">Supporting</span>
+        </span>
+        <span className="countCell">
+          <span className="countCell__value">{record.conflictingEvidence.length}</span>
+          <span className="countCell__label">Conflicting</span>
+        </span>
+        <span className="countCell">
+          <span className="countCell__value">{record.unverifiedClaims}</span>
+          <span className="countCell__label">Unverified</span>
+        </span>
+      </div>
+    </ContextSection>
   )
 }
 

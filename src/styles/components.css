@@ -1025,3 +1025,119 @@
     width: 100vw;
   }
 }
+
+/* ── Provenance and source chips ───────────────────────────────────────── */
+
+.provChain {
+  list-style: none;
+  margin: var(--space-sm) 0;
+  padding: 0;
+  display: grid;
+  gap: 0;
+}
+
+.provChain__item {
+  display: grid;
+  justify-items: start;
+}
+
+.provChain__arrow {
+  display: block;
+  width: 1px;
+  height: 0.75rem;
+  margin: 0.1rem 0 0.1rem 0.85rem;
+  background: var(--border-strong);
+}
+
+.provNode {
+  display: grid;
+  gap: 0.1rem;
+  padding: 0.4rem 0.55rem;
+  border: var(--rule-hair) solid var(--border);
+  border-radius: var(--radius-xs);
+  background: var(--surface-2);
+  color: inherit;
+  text-decoration: none;
+  min-width: 12rem;
+}
+
+.provNode:hover {
+  border-color: var(--border-accent);
+}
+
+.provNode__kind {
+  font-size: 0.625rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.provNode__title {
+  font-weight: 600;
+  font-size: var(--text-sm);
+}
+
+.provNode__sub {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.sourceChip {
+  display: inline-grid;
+  padding: 0.3rem 0.5rem;
+  border: var(--rule-hair) solid var(--border);
+  border-radius: var(--radius-xs);
+  text-decoration: none;
+  color: inherit;
+  min-width: 10rem;
+}
+
+.sourceChip:hover {
+  background: var(--surface-2);
+}
+
+.sourceChip__title {
+  font-size: var(--text-sm);
+  font-weight: 550;
+}
+
+.sourceChip__meta {
+  font-size: var(--text-2xs);
+  color: var(--text-faint);
+}
+
+.sourceChipRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+  margin-top: var(--space-sm);
+}
+
+.verb {
+  display: inline-block;
+  font-size: 0.625rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  margin-bottom: 0.1rem;
+}
+
+.verb--proposed {
+  color: var(--risk-medium);
+}
+
+.verb--approved {
+  color: var(--risk-low);
+}
+
+.verb--rejected {
+  color: var(--risk-high);
+}
+
+.verb--waiting {
+  color: var(--brand-emphasis);
+}
+
+.confidenceRow {
+  margin: var(--space-sm) 0;
+}

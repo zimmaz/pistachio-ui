@@ -7,6 +7,7 @@ import {
   type AssistantBlock,
 } from '@/data/assistant'
 import { PROJECT, attackPathById, findingById } from '@/data'
+import { Link } from 'react-router-dom'
 import { EntityRef, RichText, SourceReference } from './EntityRef'
 import { SeverityBadge } from './Badges'
 import { AttackPathView } from './AttackPath'
@@ -78,7 +79,7 @@ export function PistachioAssistant({ open, onClose }: { open: boolean; onClose: 
         <div>
           <h2 className="assistant__title">Ask Pistachio</h2>
           <p className="assistant__scope">
-            {PROJECT.name} · model {PROJECT.modelVersion}
+            {PROJECT.name} · current model {PROJECT.modelVersion}
           </p>
         </div>
         <button className="btn btn--quiet btn--icon" onClick={onClose} aria-label="Close assistant">
@@ -203,6 +204,13 @@ function AnswerBlock({ block }: { block: AssistantBlock }) {
 
     case 'sources':
       return <SourceReference ids={block.refs} />
+
+    case 'action':
+      return (
+        <Link className="btn btn--block" to={block.to}>
+          {block.label}
+        </Link>
+      )
 
     default:
       return null

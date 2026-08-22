@@ -50,7 +50,10 @@ export function Evidence() {
       EVIDENCE.filter((item) => {
         if (type !== 'All' && item.type !== type) return false
         if (source && item.source !== source) return false
-        if (status && item.status !== status) return false
+        if (status === 'stale') {
+          const days = Number((item.analyzedLabel.match(/(\d+)d/) ?? [])[1] ?? 0)
+          if (!item.stale && days < 20) return false
+        } else if (status && item.status !== status) return false
         if (agent && item.agentId !== agent) return false
         if (entity && !item.affectedEntities.includes(entity)) return false
         if (time && bucketFor(item.analyzedLabel) !== time) return false

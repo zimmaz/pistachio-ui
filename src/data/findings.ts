@@ -1,8 +1,7 @@
 import type { Finding } from './types'
 
-/* 15 findings. Twelve are open (2 critical · 4 high · 4 medium · 2 low);
-   three carry a recorded human decision. Counts on every page derive from
-   this array — nothing is hard-coded downstream. */
+/* Findings for the Payments Platform. Open counts, review queues and
+   assistant answers all derive from this array. */
 
 export const FINDINGS: Finding[] = [
   {
@@ -53,26 +52,87 @@ export const FINDINGS: Finding[] = [
   },
   {
     id: 'FIND-107',
-    title: 'Webhook crosses trust boundary without replay protection',
+    title: 'Missing replay protection',
     severity: 'high',
     type: 'Threat',
     target: 'Webhook Service',
     targetId: 'CMP-04',
     source: 'PR #182',
     sourceEvidenceId: 'EV-041',
-    status: 'Open',
+    status: 'In Review',
     detectedAt: '2026-08-22T11:41:00Z',
     detectedLabel: '43m ago',
     detectedBy: 'Threat Analysis Agent',
-    owner: 'Payments Engineering',
+    owner: 'Payments AppSec',
+    remediationOwner: 'Payments Backend',
+    dueDate: '5 Sep 2026',
+    lastConfirmed: '12 minutes ago',
+    ticket: 'PAY-2144',
+    confidence: 'High',
+    proposedInVersion: 'v19',
     rationale:
       'PR #182 introduced an internet-reachable endpoint that produces onto the payment event queue. The handler verifies an HMAC over the body but enforces neither a nonce nor a timestamp window, so a single captured callback can be replayed indefinitely. Each replay becomes a distinct settlement event, because the Event Worker does not apply an idempotency key on the external producer path.',
     attackPathId: 'AP-03',
     mitigation:
-      'Enforce a five-minute timestamp window plus a delivery-identifier ledger at the webhook, and make settlement writes idempotent on the acquirer delivery identifier.',
+      'Validate signed webhook timestamps and reject requests outside an approved replay window. Persist a delivery-identifier ledger and make settlement writes idempotent on the acquirer delivery identifier.',
     controls: ['CTRL-02', 'CTRL-25', 'CTRL-30'],
     threats: ['TM-041', 'TM-046'],
     evidence: ['EV-041', 'EV-039'],
+  },
+  {
+    id: 'FIND-109',
+    title: 'Webhook signature validation not demonstrated',
+    severity: 'high',
+    type: 'Control Gap',
+    target: 'Webhook Service',
+    targetId: 'CMP-04',
+    source: 'PR #182',
+    sourceEvidenceId: 'EV-041',
+    status: 'In Review',
+    detectedAt: '2026-08-22T12:06:00Z',
+    detectedLabel: '18m ago',
+    detectedBy: 'Threat Analysis Agent',
+    owner: 'Payments AppSec',
+    remediationOwner: 'Payments Backend',
+    dueDate: '5 Sep 2026',
+    lastConfirmed: '12 minutes ago',
+    confidence: 'Moderate',
+    proposedInVersion: 'v19',
+    rationale:
+      'PR #182 describes HMAC verification on POST /webhooks/acquirer. The handler under src/routes/webhook.ts does not demonstrate verification against the shared secret, so a forged callback may be accepted as a settlement event.',
+    attackPathId: 'AP-03',
+    mitigation:
+      'Verify the acquirer HMAC against the rotated shared secret before enqueueing, and reject unsigned or incorrectly signed payloads at the edge.',
+    controls: ['CTRL-02'],
+    threats: ['TM-048'],
+    evidence: ['EV-041'],
+  },
+  {
+    id: 'FIND-112',
+    title: 'Excessive queue producer permissions',
+    severity: 'high',
+    type: 'Evidence Conflict',
+    target: 'Event Queue',
+    targetId: 'CMP-05',
+    source: 'terraform/prod/sqs.tf',
+    sourceEvidenceId: 'EV-044',
+    status: 'Open',
+    detectedAt: '2026-08-20T16:10:00Z',
+    detectedLabel: '2d ago',
+    detectedBy: 'Architecture Agent',
+    owner: 'Platform Engineering',
+    remediationOwner: 'Platform Engineering',
+    dueDate: '29 Aug 2026',
+    lastConfirmed: '2 days ago',
+    confidence: 'High',
+    rationale:
+      'ASM-012 recorded that the Event Queue accepts messages only from approved producers, established in the Architecture Sync on Aug 20. terraform/prod/sqs.tf grants sqs:SendMessage to a wildcard principal, so any workload in the account can inject settlement events.',
+    attackPathId: 'AP-021',
+    mitigation:
+      'Replace the wildcard producer statement with an explicit allowlist of the Payment API role, and deny SendMessage from all other principals.',
+    controls: ['CTRL-30'],
+    threats: ['TM-049'],
+    evidence: ['EV-044', 'EV-045'],
   },
   {
     id: 'FIND-105',
@@ -127,7 +187,7 @@ export const FINDINGS: Finding[] = [
     targetId: 'CMP-03',
     source: 'Architecture review',
     sourceEvidenceId: 'EV-039',
-    status: 'Needs review',
+    status: 'In Review',
     detectedAt: '2026-08-18T14:00:00Z',
     detectedLabel: '4d ago',
     detectedBy: 'Threat Analysis Agent',
@@ -352,6 +412,8 @@ export const FINDING_TYPES: Finding['type'][] = [
 export const FINDING_STATUSES: Finding['status'][] = [
   'Open',
   'Needs review',
+  'In Review',
+  'Mitigation Planned',
   'Mitigating',
   'Pending approval',
   'Risk accepted',
@@ -359,4 +421,11 @@ export const FINDING_STATUSES: Finding['status'][] = [
   'Invalid',
 ]
 
-export const OPEN_STATUSES: Finding['status'][] = ['Open', 'Needs review', 'Mitigating', 'Pending approval']
+export const OPEN_STATUSES: Finding['status'][] = [
+  'Open',
+  'Needs review',
+  'In Review',
+  'Mitigation Planned',
+  'Mitigating',
+  'Pending approval',
+]

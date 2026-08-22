@@ -1,6 +1,6 @@
 import { Fragment } from 'react'
 import { Link } from 'react-router-dom'
-import { entityLabel, entityRoute } from '@/data'
+import { entityLabel, entityRoute, evidenceById } from '@/data'
 
 /**
  * Every claim in Pistachio is traceable. EntityRef is the single vocabulary
@@ -23,6 +23,19 @@ export function RefList({ ids, empty = '—' }: { ids: string[]; empty?: string 
         <EntityRef key={id} id={id} />
       ))}
     </span>
+  )
+}
+
+/** Compact source chip used in reviews, findings, chat and provenance. */
+export function SourceChip({ id }: { id: string }) {
+  const evidence = evidenceById.get(id)
+  return (
+    <Link className="sourceChip" to={entityRoute(id)} title={entityLabel(id)}>
+      <span className="sourceChip__title">{evidence?.name ?? entityLabel(id)}</span>
+      <span className="sourceChip__meta">
+        {evidence ? `${evidence.source} · ${evidence.analyzedLabel}` : id}
+      </span>
+    </Link>
   )
 }
 

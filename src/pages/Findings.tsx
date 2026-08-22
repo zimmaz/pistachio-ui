@@ -18,6 +18,7 @@ import { SeverityBadge, StatusBadge } from '@/components/Badges'
 import { FilterBar } from '@/components/FilterBar'
 import { FindingDetail, type Decision } from '@/components/FindingDetail'
 import { RiskAcceptanceModal } from '@/components/RiskAcceptanceModal'
+import { useModelSession } from '@/lib/model-session'
 
 type SortKey = 'severity' | 'detectedAt' | 'id' | 'target'
 
@@ -27,6 +28,7 @@ export function Findings() {
   const [params, setParams] = useSearchParams()
   const [decisions, setDecisions] = useState<Record<string, Decision>>({})
   const [acceptFor, setAcceptFor] = useState<Finding | null>(null)
+  const session = useModelSession()
   const [sort, setSort] = useState<{ key: SortKey; dir: 'asc' | 'desc' }>({ key: 'severity', dir: 'asc' })
 
   const selectedId = params.get('id')
@@ -93,6 +95,7 @@ export function Findings() {
 
   const record = (finding: Finding, decision: Decision) => {
     setDecisions((prev) => ({ ...prev, [finding.id]: decision }))
+    session.recordFinding(finding.id, decision)
   }
 
   const owners = Array.from(new Set(FINDINGS.map((f) => f.owner)))
@@ -244,11 +247,18 @@ export function Findings() {
         finding={selected}
         decision={selected ? decisions[selected.id] : undefined}
         onClose={() => patch({ id: null })}
+        onPlanMitigation={() =>
+          selected &&
+          record(selected, {
+            status: 'Mitigation Planned',
+            note: `Mitigation planned by Dana Okoye. Owner ${selected.remediationOwner ?? selected.owner}. Due ${selected.dueDate ?? 'unscheduled'}.`,
+          })
+        }
         onMitigate={() =>
           selected &&
           record(selected, {
             status: 'Mitigating',
-            note: `Mitigation assigned to ${selected.owner} by Dana Okoye. The finding stays open until the control is verified.`,
+            note: `Mitigation assigned to ${selected.remediationOwner ?? selected.owner} by Dana Okoye. The finding stays open until the control is verified.`,
           })
         }
         onAcceptRisk={() => setAcceptFor(selected)}
@@ -259,14 +269,18 @@ export function Findings() {
             note: 'Marked invalid by Dana Okoye. The underlying threat stays in the model; only this finding is closed.',
           })
         }
+        acceptedRisk={selected ? session.acceptedRisk(selected.id) : undefined}
       />
 
       <RiskAcceptanceModal
         key={acceptFor?.id ?? 'none'}
         finding={acceptFor}
         onClose={() => setAcceptFor(null)}
-        onSubmit={(summary) => {
-          if (acceptFor) record(acceptFor, { status: 'Pending approval', note: summary })
+        onSubmit={(recordData) => {
+          if (acceptFor) {
+            session.recordAcceptedRisk(acceptFor.id, recordData)
+            record(acceptFor, { status: 'Risk accepted', note: recordData.summary })
+          }
           setAcceptFor(null)
         }}
       />
