@@ -197,6 +197,7 @@ export const ATTENTION_FINDINGS = [...OPEN_FINDINGS]
   })
   .slice(0, 5)
 
+/** Seed history only. Runtime current version lives on the model session. */
 export const CURRENT_VERSION = MODEL_VERSIONS[0]
 export const PREVIOUS_VERSION = MODEL_VERSIONS[1]
 

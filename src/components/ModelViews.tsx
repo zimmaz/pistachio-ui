@@ -2,15 +2,14 @@ import { Link } from 'react-router-dom'
 import {
   ATTACK_PATHS,
   COMPONENTS,
-  CURRENT_VERSION,
   DATA_FLOWS,
   MODEL_COMPARISONS,
-  PREVIOUS_VERSION,
   PROPOSED_VERSION,
   componentById,
   type AttackPath as AttackPathModel,
 } from '@/data'
 import { useModelSession } from '@/lib/model-session'
+import { isProposedForVersion } from '@/lib/model-visibility'
 import { ArchitectureGraph, GraphLegend } from './ArchitectureGraph'
 import { AttackPathView } from './AttackPath'
 import { SeverityBadge, StatusBadge } from './Badges'
@@ -53,7 +52,6 @@ export function ArchitectureView({
           onSelect={(id) => onSelect(id)}
           highlightPath={proposedOn ? RISKY_PATH : []}
           showProposed={showProposed}
-          includeApprovedProposal={session.webhookApproved}
           newInVersion="v19"
         />
       </div>
@@ -79,7 +77,7 @@ export function AttackPathsView({
         <h3 className="def__label">Attack paths</h3>
         <ul>
           {ATTACK_PATHS.map((candidate) => {
-            const proposed = Boolean(candidate.proposedInVersion && candidate.proposedInVersion > session.currentVersion)
+            const proposed = isProposedForVersion(candidate, session.currentVersion)
             const changed = candidate.id === 'AP-021'
             const badge = proposed ? 'Proposed' : changed ? 'Changed' : 'Current'
             return (
@@ -292,7 +290,7 @@ export function ChangesView({
           <div className="panel__head">
             <h2 className="panel__title">Compare</h2>
             <span className="panel__meta">
-              {PREVIOUS_VERSION.version} vs {CURRENT_VERSION.version}
+              {session.modelHistory[1]?.version ?? 'v17'} vs {session.currentVersion}
             </span>
           </div>
           <div className="panel__body">
@@ -331,7 +329,7 @@ export function ChangesView({
                 </div>
               </dl>
             ) : (
-              <p className="u-muted">Select a historical version to compare it with v18.</p>
+              <p className="u-muted">Select a historical version to compare it with {session.currentVersion}.</p>
             )}
           </div>
         </section>
@@ -348,8 +346,8 @@ export function ProposedBanner() {
   return (
     <div className="callout callout--info" role="status">
       <span>
-        Current model is v18. {webhook.length} components and {flows.length} data flows from PR #182 are proposed for
-        v19 and are not authoritative.{' '}
+        Current model is {session.currentVersion}. {webhook.length} components and {flows.length} data flows from PR
+        #182 are proposed for v19 and are not authoritative.{' '}
         <Link className="ref" to="/overview?review=REV-021">
           Review REV-021
         </Link>

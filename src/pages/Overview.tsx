@@ -242,7 +242,6 @@ export function Overview() {
               compact
               highlightPath={RISKY_PATH}
               showProposed
-              includeApprovedProposal={session.webhookApproved}
               newInVersion="v19"
             />
           </div>

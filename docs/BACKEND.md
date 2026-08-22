@@ -1,534 +1,568 @@
-# Backend integration guide
+# Frontend / domain contract
 
-This document tells a backend developer how to replace the mocked frontend with a real API **without rewriting the product UI**.
+This document describes the **frontend/domain contract** and backend capabilities required by the Pistachio prototype. It is **not** the final backend architecture or database schema.
 
-The frontend is a working demo. It has no HTTP client, no auth, and no persistence. All domain data is imported from `src/data/`. Mutations (finding decisions, risk-acceptance requests) live in React state for the session only.
+```
+Frontend DTO
+  ≠  Backend domain entity
+  ≠  Database row
+```
 
-The types in `src/data/types.ts` are the contract of record. Treat them as the API schema until a generated client exists.
+Some frontend properties are derived or presentational and must not automatically become persistence columns. Examples:
+
+- display labels and relative timestamps (`12m ago`, `just now`)
+- graph coordinates (`x`, `y` on components and trust boundaries)
+- derived counts (`METRICS`, review-queue totals, `expiresInDays`)
+- navigation URLs (`to`, `entityRoute`)
+- UI-only status text and chips
+
+The types in `src/data/types.ts` and the live session behaviour in `src/lib/model-session.tsx` are the current contract of record. Treat them as the product’s expected shapes, not as a table design.
+
+The frontend is a working demo. It has no HTTP client, no auth, and no persistence. Domain seed data lives in `src/data/`. Session mutations (review decisions, model publication, finding lifecycle, risk acceptance) live in React state until a backend exists.
 
 ---
 
-## Current architecture
+## Product rule
+
+This is the most important backend requirement:
 
 ```
-Browser
-  └── React 18 + Vite + react-router-dom
-        ├── pages/          read mocks from @/data
-        ├── components/     presentational; most are already API-shaped
-        └── data/           static TypeScript modules (to be replaced)
+Evidence is observed.
+Agents analyze evidence.
+Agents create proposals.
+Proposals enter human review.
+Only approved proposals modify the authoritative model.
+Approval creates a new model version.
+Findings have a separate lifecycle.
+Risk acceptance is a human governance action.
 ```
 
-There is no `src/api/`, no React Query, no store. Pages import named exports from `@/data` (`FINDINGS`, `METRICS`, `entityRoute()`, …).
+Agents propose. Humans approve. The model records accepted state.
+
+Do not silently mutate the meaning of an already published version. The frontend story is:
 
 ```
-src/data/
-  types.ts        canonical domain types — keep these
-  index.ts        derived metrics, id lookups, entityLabel / entityRoute
-  project.ts      current project, user, model versions, TOC
-  model.ts        components, flows, boundaries, assets, threats,
-                  controls, assumptions, attack paths, exceptions
-  findings.ts     findings + status / type enums
-  evidence.ts     evidence sources
-  agents.ts       agents + agent activity
-  activity.ts     model activity + notifications
-  assistant.ts    canned Ask Pistachio answers
+v18
+   ↓ approved model change (REV-021)
+v19
 ```
 
-**Integration rule:** keep `types.ts` and the page/component tree. Replace the static modules with a thin client that returns the same shapes. Do not invent a parallel frontend model.
+v18 remains historical. v19 is a new current version. The backend may implement that with snapshots, events, temporal records, change sets, or another mechanism. This document does not prescribe one.
 
 ---
 
-## Product model
+## First-class domain concepts
 
-Pistachio is not a scanner. The loop the UI is built around:
+These are product concepts. They do **not** necessarily map one-to-one to database tables.
 
-```
-Evidence → System understanding → Threat model → Findings → Decision → Updated model
-```
+| Concept | Role | Typical id |
+|---|---|---|
+| Project | One application / environment | `PRJ-PAY` |
+| Evidence | Immutable source material | `EV-041` |
+| Model | The accepted system understanding | — |
+| Model Version | Published snapshot of accepted state | `v18`, `v19` |
+| Model Entity | Versioned object inside a model | `CMP-` `DF-` `TB-` `AST-` |
+| Model Change / Proposal | Proposed delta awaiting review | REV-021 / PR #182 |
+| Component | System node | `CMP-04` |
+| Data Flow | Directed relationship between components | `DF-02` |
+| Trust Boundary | Crossing constraint | `TB-01` |
+| Asset | Valuable target | `AST-01` |
+| Threat | Modelled attack possibility | `TM-047` |
+| Attack Path | Walkable chain through the model | `AP-03` |
+| Control | Mitigating measure | `CTRL-02` |
+| Assumption | Claim the model currently depends on | `ASM-012` |
+| Finding | Actionable operational concern | `FIND-107` |
+| Mitigation | Planned or active treatment of a finding | — |
+| Decision / Risk Acceptance | Human governance record | `EXC-021` |
+| Review | Human workflow over a proposal | `REV-021` |
+| Agent | Worker that analyzes and proposes | `AGT-01` |
+| Agent Run | One execution of an agent | — |
+| Provenance Relation | Typed `source → relation → target` edge | — |
 
-Six concepts must stay first-class and cross-linked:
-
-| Concept | What it is | Prefix | Example |
-|---|---|---|---|
-| Project | One application / environment | `PRJ-` | `PRJ-PAY` |
-| Evidence | Something observed | `EV-` | `EV-041` |
-| Model entity | Component, flow, boundary, asset, threat, control, assumption, path | `CMP-` `DF-` `TB-` `AST-` `TM-` `CTRL-` `ASM-` `AP-` | `CMP-04` |
-| Finding | Something a human must decide | `FIND-` | `FIND-103` |
-| Decision / exception | Human governance | `EXC-` | `EXC-021` |
-| Agent | Automated worker that proposes, never approves | `AGT-` | `AGT-01` |
-
-IDs are **stable, human-readable, and prefixed**. The UI renders them in JetBrains Mono and treats them as hyperlinks via `entityRoute(id)`. Do not switch to opaque UUIDs in the UI without also returning a `displayId`. Internally you may use UUIDs; the wire format the UI sees should keep the prefixes.
-
-Every claim that appears on screen must be traceable to evidence. If the backend cannot name a source, the UI should not invent one.
+IDs shown in the UI are stable, human-readable, and prefixed. Internally the backend may use UUIDs; the wire format the UI sees should keep the prefixes or also return a `displayId`.
 
 ---
 
-## Identifier routing
+## Authoritative model vs proposed changes
 
-`entityRoute()` in `src/data/index.ts` is how every `FIND-` / `EV-` / `CMP-` / … link is resolved. After wiring the API, this function must still work — either against a client-side index built from the loaded project, or against a cheap `GET /entities/{id}` that returns `{ id, kind, route }`.
+The frontend distinguishes:
+
+```
+Authoritative model     current published version
+Proposed changes        objects attached to an unapproved proposal
+Historical              previously published versions
+```
+
+Objects carry enough metadata for the UI to decide visibility:
+
+```ts
+proposedInVersion?: string
+proposalId?: string
+addedInVersion?: string
+```
+
+and conceptually:
+
+```ts
+type ModelObjectState = 'approved' | 'proposed' | 'removed' | 'superseded'
+```
+
+**Recursive visibility.** Filtering top-level lists is not enough. If an approved object references a proposed object, that relationship must be hidden from the authoritative view.
+
+Example: `TB-01` is approved in v18. `DF-02` is proposed for v19. Authoritative v18 must show `TB-01` crossings without `DF-02`. With “Show proposed changes” on, `DF-02` may appear and must be labelled proposed. After REV-021 is approved, `DF-02` becomes a normal v19 crossing.
+
+Frontend helper: `src/lib/model-visibility.ts` (`isModelObjectVisible`, `filterVisibleRelations`).
+
+---
+
+## Model versions
+
+There is one runtime source of truth for the current version: the session’s `currentVersion` (`src/lib/model-session.tsx`). Seed arrays such as `MODEL_VERSIONS` and `CURRENT_VERSION` are **historical fixtures**, not current runtime state after the session starts.
+
+Effective history is:
+
+```
+seed history (v15–v18)
+  + session publication (v19 after REV-021)
+  = modelHistory
+```
+
+Before approval:
+
+```
+v18   Current
+v17
+v16
+…
+```
+
+After REV-021:
+
+```
+v19   Current
+v18
+v17
+…
+```
+
+The UI may inspect a historical version while another version is current:
+
+```
+currentModelVersion = v19
+selectedModelVersion = v18
+```
+
+A historical view must say it is historical. It must not be labelled current.
+
+Version identifiers are numeric (`v9`, `v10`, `v18`). Compare them with `src/lib/model-version.ts`. Do not order them lexicographically.
+
+---
+
+## Reviews
+
+Review is a first-class workflow, separate from content revision.
+
+```ts
+type ReviewStatus =
+  | 'Awaiting Review'
+  | 'Awaiting Clarification'
+  | 'Approved'
+  | 'Rejected'
+
+type ReviewRevisionState = 'original' | 'edited'
+```
+
+Editing a proposal does **not** complete the review. The item stays `Awaiting Review` and is marked `edited`. Only `Approved` and `Rejected` leave the active queue. `Awaiting Clarification` remains visible in its own subsection.
+
+Conceptual actions:
+
+- approve proposal
+- reject proposal
+- request clarification
+- return to review
+- edit before approval
+
+### Model-change approval
+
+```
+Model Proposal
+   ↓ human approval
+Published Model Version
+```
+
+Demo story:
+
+```
+REV-021
+   ↓
+v18 → v19
+```
+
+Approving a model proposal can make proposed components, data flows, trust-boundary changes, threats, and attack paths authoritative.
+
+**Approving a model proposal does not automatically resolve, accept, or otherwise complete associated findings.**
+
+```
+PR #182
+   ↓
+model proposal approved
+   ↓
+v19 created
+   ↓
+TM-047 / TM-048 become authoritative
+   ↓
+FIND-107 remains In Review
+FIND-109 remains Open
+```
+
+This is intentional.
+
+---
+
+## Findings
+
+Findings are operational objects derived from model and evidence. They are not model entities.
+
+Current frontend statuses (`src/data/findings.ts`):
+
+```
+Open
+In Review
+Mitigation Planned
+Mitigating
+Risk Acceptance Requested
+Risk Accepted
+Resolved
+Invalid
+```
+
+Open for attention / counts:
+
+```
+Open | In Review | Mitigation Planned | Mitigating | Risk Acceptance Requested
+```
+
+Do not retain stale values from earlier iterations (`Needs review`, `Pending approval` as finding statuses, `Risk accepted` as a distinct spelling). Exception records may still use `Pending approval` for the decision object itself.
+
+---
+
+## Risk acceptance
+
+Risk acceptance is a dedicated human governance decision, not a boolean on a finding and not a normal model-change review.
+
+A request records:
+
+- Finding
+- Residual risk
+- Risk owner
+- Justification
+- Compensating controls
+- Expiration
+- Required approver
+- Human approval identity
+
+Agents may recommend risk treatment. Agents may **not** approve risk, accept exceptions, or appear as `Approved by`.
+
+The result is a Decision / Exception record (`EXC-*`, conceptually `GovernanceDecision` / `RiskException`). Approving risk sets the finding to `Risk Accepted`. Rejecting it returns the finding to `Open`.
+
+Conceptual actions:
+
+- request risk acceptance
+- approve risk
+- reject risk
+
+---
+
+## Authorization
+
+The demo assumes the signed-in user may act. The backend must eventually enforce authority server-side for:
+
+- approve model proposal
+- reject proposal
+- request / return clarification
+- approve risk
+- reject risk
+- manage exception
+
+Do not treat UI-only role labels as enforcement.
+
+---
+
+## Evidence
+
+Evidence is the source material from which Pistachio derives security knowledge. It is observed, not inferred.
+
+A record should ultimately have:
+
+- identity
+- source / type
+- timestamps
+- ingestion metadata
+- content or a reference to content
+- processing status
+- provenance relationships
+
+Exact storage will be decided in backend design.
+
+Current frontend evidence statuses: `Analyzed | Needs review | Analyzing | Conflict`.
+
+---
+
+## Agents and agent runs
+
+Agents are workers, not owners of authoritative state.
+
+They may:
+
+- ingest / analyze evidence
+- extract system facts
+- propose model changes
+- propose threats
+- propose findings
+- identify contradictions
+- suggest mitigations
+
+They may not:
+
+- publish an authoritative model without review
+- accept organizational risk
+- approve exceptions
+- impersonate human reviewers
+
+An **Agent Run** is one execution. The UI already thinks in terms of agent, trigger, input, observations, proposals, findings, status, and timestamp. A run must be traceable to its inputs and outputs for audit and provenance.
+
+---
+
+## Provenance
+
+Provenance is a typed relationship graph, not only a linear chain.
+
+```ts
+{
+  sourceId: string
+  targetId: string
+  relation: ProvenanceRelation
+}
+
+type ProvenanceRelation =
+  | 'supports'
+  | 'contradicts'
+  | 'establishes'
+  | 'derived_from'
+  | 'introduced_by'
+  | 'modified_by'
+  | 'affects'
+  | 'motivates'
+  | 'verifies'
+  | 'invalidates'
+  | 'participates_in'
+```
+
+The frontend may render a selected path as a narrative. The backend should preserve the richer graph.
+
+Examples:
+
+```
+PR #182  ── introduced_by ──>  Webhook Service
+Webhook Service  ── affects / motivates ──>  TM-047
+PR #182  ── supports ──>  FIND-107
+```
+
+```
+Architecture Sync  ── establishes ──>  ASM-012
+terraform/prod/sqs.tf  ── contradicts ──>  ASM-012
+ASM-012  ── affects ──>  TM-049
+TM-049  ── participates_in ──>  AP-021
+terraform/prod/sqs.tf  ── supports ──>  FIND-112
+```
+
+A finding does not cause an attack path. Evidence and assumptions do.
+
+---
+
+## Server-authoritative state
+
+Once a backend exists, the server is authoritative for:
+
+- current model version
+- proposal state
+- review state
+- finding lifecycle
+- risk decisions
+- approval identity
+- model history
+
+The frontend session store currently mocks these behaviours. It should become a client cache / read model, not the source of truth.
+
+---
+
+## Conceptual API
+
+Do not lock the final backend to exact REST names. The UI will need resources and actions around:
+
+```
+projects
+model / model versions / model proposals / comparison
+evidence
+threats / attack paths
+findings
+reviews
+decisions / risk acceptance
+agents / agent runs
+provenance
+```
+
+Useful actions:
+
+```
+approve proposal
+reject proposal
+request clarification
+request risk acceptance
+approve risk
+reject risk
+view model version
+compare model versions
+trace provenance
+```
+
+Suggested read envelopes can follow the current frontend aggregates (`GET /projects/{id}/model` returning versioned collections). Graph layout coordinates are abstract grid units, not pixels.
+
+Identifier routing used by the UI (`entityRoute` in `src/data/index.ts`):
 
 | Prefix | Frontend route |
 |---|---|
+| `REV-*` | `/overview?review={id}` |
 | `FIND-*` | `/findings?id={id}` |
 | `EV-*` | `/evidence?id={id}` |
-| `CMP-*` | `/model?entity={id}#architecture` |
-| `TM-*` | `/model?entity={id}#threats` |
-| `CTRL-*` | `/model#controls` |
-| `AST-*` | `/model#assets` |
-| `TB-*` | `/model#trust-boundaries` |
-| `ASM-*` | `/model#assumptions` |
-| `EXC-*` | `/model#risks` |
-| `AP-*` | `/model?path={id}#attack-paths` |
-| `DF-*` | `/model#data-flows` |
+| `CMP-*` | `/model?entity={id}&view=architecture` |
+| `TM-*` | `/model?entity={id}&view=document#threats` |
+| `CTRL-*` | `/model?view=document#controls` |
+| `AST-*` | `/model?view=document#assets` |
+| `TB-*` | `/model?view=document#trust-boundaries` |
+| `ASM-*` | `/model?view=document#assumptions` |
+| `EXC-*` | `/model?view=document#risks` |
+| `AP-*` | `/model?path={id}&view=paths` |
+| `DF-*` | `/model?view=document#data-flows` |
 | `AGT-*` | `/agents?id={id}` |
 
-Assistant answers embed ids as `[[FIND-103]]`. `RichText` turns those tokens into the same links. Backend-generated assistant text should use that token form.
+Assistant answers embed ids as `[[FIND-107]]`. Backend-generated assistant text should use that token form and remain session-aware of the current model version.
 
 ---
 
-## Suggested API surface
-
-Scope everything by project (and environment). The demo’s current project is `PRJ-PAY` / `Production`.
-
-Assume a prefix like `/v1`. Names below are suggestions; the **payloads** are not.
-
-### Session / tenancy
-
-```
-GET  /me
-GET  /projects
-GET  /projects/{projectId}                         # includes environment, modelStatus, coverage
-GET  /projects/{projectId}/environments
-```
-
-`GET /me` should return the `CURRENT_USER` shape (`name`, `initials`, `role`, `team`). The sidebar and risk-acceptance copy use this.
-
-`GET /projects` should return the `OTHER_PROJECTS` shape. The project switcher is already rendered as selectable; only `PRJ-PAY` is wired.
-
-### Model (read)
-
-The Model page is a document over structured data. Prefer one aggregate for first paint, plus cheaper endpoints for lists.
-
-```
-GET  /projects/{id}/model                          # current published version
-GET  /projects/{id}/model/versions                 # newest first — MODEL_VERSIONS
-GET  /projects/{id}/model/versions/{version}       # v18, v17, …
-GET  /projects/{id}/components
-GET  /projects/{id}/data-flows
-GET  /projects/{id}/trust-boundaries
-GET  /projects/{id}/assets
-GET  /projects/{id}/threats
-GET  /projects/{id}/controls
-GET  /projects/{id}/assumptions
-GET  /projects/{id}/attack-paths
-GET  /projects/{id}/exceptions
-```
-
-`GET /model` should be enough to render `/model` and the Overview architecture mini-map. Suggested envelope:
-
-```ts
-{
-  project: Project
-  version: ModelVersion          // current
-  versions: ModelVersion[]       // history, newest first
-  components: SystemComponent[]
-  dataFlows: DataFlow[]
-  trustBoundaries: TrustBoundary[]
-  assets: Asset[]
-  threats: Threat[]
-  controls: Control[]
-  assumptions: Assumption[]
-  attackPaths: AttackPath[]
-  exceptions: RiskException[]
-  sections?: ModelSection[]      // optional; frontend has a default TOC
-}
-```
-
-Architecture graph layout uses `SystemComponent.x` / `.y` and `TrustBoundary.y` in **abstract grid units**, not pixels. The frontend maps those to SVG. If the backend cannot yet compute layout, return coordinates; a later layout service can replace them. Do not send pixel positions.
-
-`DataFlow.from` / `.to` are component ids. `crossesBoundary` is a `TB-*` id or `null`.
-
-`Threat.target`, `Finding.targetId`, `Control.components`, `Asset.storedIn`, `Assumption.source` (evidence id), and `EvidenceSource.affectedEntities` are all ids. Keep them as ids, not denormalised names — the UI looks names up.
-
-### Evidence
-
-```
-GET  /projects/{id}/evidence                       # list + filters
-GET  /projects/{id}/evidence/{evidenceId}
-```
-
-List query params the Evidence page already uses (keep these names):
-
-| Param | Meaning |
-|---|---|
-| `type` | `Architecture` \| `Code` \| `Pull Request` \| `Meeting` \| `Infrastructure` \| `Policy` \| `Runtime` |
-| `source` | `GitHub` \| `Confluence` \| `Teams` \| `Datadog` \| `Pistachio` (extensible) |
-| `status` | `Analyzed` \| `Needs review` \| `Analyzing` \| `Conflict` |
-| `agent` | `AGT-*` |
-| `entity` | affected model entity id |
-| `q` | free text over id, name, format, author |
-| `time` | frontend currently buckets client-side from `analyzedLabel`; prefer `analyzedAfter` / `analyzedBefore` ISO timestamps |
-
-Each row is an `EvidenceSource`. Detail is the same object — there is no second shape. `detectedChanges` is a list of short delta strings (`+ …`, `~ …`, `- …`, `! …`). `modelChange` is `"v17 → v18"` or `null`.
-
-### Findings
-
-```
-GET    /projects/{id}/findings
-GET    /projects/{id}/findings/{findingId}
-POST   /projects/{id}/findings/{findingId}/mitigate
-POST   /projects/{id}/findings/{findingId}/invalidate
-POST   /projects/{id}/findings/{findingId}/risk-acceptances
-```
-
-List query params already in the URL:
-
-| Param | Meaning |
-|---|---|
-| `id` | open this finding’s drawer (deep link, not a filter) |
-| `severity` | `critical` \| `high` \| `medium` \| `low` |
-| `type` | `FindingType` |
-| `component` | `CMP-*` |
-| `status` | `FindingStatus` |
-| `owner` | team name |
-| `scope` | `open` (default) \| `all` |
-| `q` | free text |
-
-Open statuses (must stay in sync with `OPEN_STATUSES`):
-
-```
-Open | Needs review | Mitigating | Pending approval
-```
-
-Closed / settled:
-
-```
-Risk accepted | Resolved | Invalid
-```
-
-**Agents must not be able to call the decision endpoints.** Only a human principal. The UI copy and the product depend on this.
-
-#### Mitigate
-
-```http
-POST /projects/{id}/findings/{findingId}/mitigate
-{ "note"?: string }
-```
-
-Sets status to `Mitigating`. The finding stays **open** until a control is verified (a later `Resolved` transition). Do not auto-resolve.
-
-#### Invalidate
-
-```http
-POST /projects/{id}/findings/{findingId}/invalidate
-{ "note": string }
-```
-
-Sets status to `Invalid`. The underlying threat stays in the model.
-
-#### Request risk acceptance
-
-This is a **request**, not an approval.
-
-```http
-POST /projects/{id}/findings/{findingId}/risk-acceptances
-{
-  "riskOwner": "Payments Director",
-  "justification": "…",          // min 20 chars in the current UI
-  "compensatingControls": ["VPN-only access", "IP allowlist"],
-  "expires": "2026-11-30",       // date
-  "securityApprover": "AppSec Director"
-}
-```
-
-Effects:
-
-1. Create a `RiskException` with `status: "Pending approval"`.
-2. Set the finding to `Pending approval`.
-3. Do **not** set `Risk accepted` here.
-4. Record `riskOwner`, `securityApprover`, controls, expiry, justification.
-
-Approval is a separate privileged action (not in the demo UI):
-
-```
-POST /projects/{id}/exceptions/{exceptionId}/approve    # AppSec only
-POST /projects/{id}/exceptions/{exceptionId}/reject
-```
-
-On approve: exception → `Approved`, finding → `Risk accepted`. On expiry: exception → `Expired`, finding reopens (`Open` or `Needs review`).
-
-The modal currently hard-codes owner options and suggested controls. Those should come from:
-
-```
-GET /projects/{id}/risk-owners
-GET /projects/{id}/compensating-control-suggestions
-GET /projects/{id}/required-approver          # "AppSec Director"
-```
-
-### Agents
-
-```
-GET  /projects/{id}/agents
-GET  /projects/{id}/agents/{agentId}
-GET  /projects/{id}/agents/{agentId}/activity
-GET  /projects/{id}/activity                   # model-wide timeline (Overview)
-GET  /projects/{id}/notifications
-```
-
-An agent is a specialised worker attached to the project, not a marketplace listing. Required fields are the `Agent` interface. `proposalsAwaitingReview` is a count of **model proposals**, not findings.
-
-Agents **propose** model changes and **create** findings. They never record `Risk accepted`, never approve exceptions, never invalidate findings.
-
-### Overview / metrics
-
-```
-GET  /projects/{id}/overview
-```
-
-The frontend currently **derives** `METRICS` and `RISK_POSTURE` from the datasets. You may either:
-
-1. Return the raw collections and let the client keep deriving (simplest, stays consistent), or
-2. Return a computed overview payload.
-
-If you compute server-side, use the same rules as `src/data/index.ts`:
-
-- `openFindings` = findings in `OPEN_STATUSES`
-- `criticalFindings` / severity breakdown = open findings only
-- `activeThreats` = threats with `status === "Active"`
-- `evidenceCoverage` = integer 0–100 (demo: `84`)
-- `needsReview` = findings with `status === "Needs review"`
-- Risk posture label = `High` when ≥ 2 open criticals, otherwise the highest open severity
-
-`ATTENTION_FINDINGS` is the top 5 open findings by severity, then recency.
-
-`MODEL_ACTIVITY` is a timeline of `ActivityEvent`. Keep `kind` as `model | finding | evidence | agent | decision`.
-
-### Search
-
-```
-GET  /projects/{id}/search?q=
-```
-
-The command palette (`⌘K`) currently searches a flattened `SEARCHABLE` list. Response items:
-
-```ts
-{ id: string; title: string; group: string; to: string }
-```
-
-`group` values in use: `Finding`, `Threat`, `Component`, `Evidence`, `Control`, `Attack path`, `Asset`, `Risk decision`, `Agent`.
-
-`to` must be a frontend route from the table above, not an API path.
-
-### Ask Pistachio
-
-```
-POST /projects/{id}/assistant/ask
-{ "question": string, "context"?: { path: string, entityId?: string } }
-```
-
-Response should be an array of `AssistantBlock` from `src/data/assistant.ts`:
-
-```ts
-{ kind: 'text'; text: string }
-{ kind: 'ordered'; items: string[] }          // items may contain [[ID]] tokens
-{ kind: 'findings'; ids: string[] }
-{ kind: 'path'; attackPathId: string }
-{ kind: 'sources'; refs: string[] }           // required on every answer
-```
-
-Rules the UI already enforces visually and the backend must honour:
-
-- Every answer ends with `sources`. No unsourced claims.
-- Cite model entities with `[[EV-041]]` / `[[FIND-103]]` in `text` / `ordered` items.
-- Suggested prompts are listed in `SUGGESTED_PROMPTS`; the backend can return its own list.
-
-Do not make chat a navigation destination. The panel is contextual (`⌘J`) and stays over the current page.
-
----
-
-## Relative time vs absolute time
-
-The demo stores both:
-
-- `detectedAt` / `analyzedAt` — ISO-8601 (`2026-08-22T12:06:00Z`)
-- `detectedLabel` / `analyzedLabel` / `lastUpdatedLabel` — display strings (`18m ago`)
-
-**Send ISO timestamps.** The frontend should format labels. Until that change lands, you may send both; do not send *only* a label.
-
-Same for `expires` on exceptions (ISO date) and `expiresInDays` (derived).
-
----
-
-## URL contract (do not break)
+## URL contract
 
 Filters, selections and drawers are in the query string. Deep links must keep working.
 
 | Page | Query / hash | Meaning |
 |---|---|---|
-| `/overview` | — | Command centre |
-| `/model` | `?entity=CMP-03` | Select architecture / threat entity, open context panel |
+| `/overview` | `?review=REV-021` | Open review drawer |
+| `/model` | `?view=document\|architecture\|paths\|changes` | Model views |
+| `/model` | `?entity=CMP-03` | Select entity / context panel |
 | `/model` | `?path=AP-01` | Selected attack path |
-| `/model` | `#architecture` `#threats` `#risks` … | Section anchors (`MODEL_SECTIONS`) |
-| `/evidence` | `?id=EV-041` | Open evidence drawer |
-| `/evidence` | `?type=` `?source=` `?status=` `?agent=` `?entity=` `?time=` `?q=` | Filters |
-| `/findings` | `?id=FIND-103` | Open finding drawer |
-| `/findings` | `?severity=` `?type=` `?component=` `?status=` `?owner=` `?scope=` `?q=` | Filters |
+| `/model` | `?proposed=1` | Architecture overlay of proposed objects |
+| `/model` | `?compare=v17` | Compare a historical version |
+| `/model` | `#architecture` `#threats` `#risks` … | Section anchors |
+| `/evidence` | `?id=EV-041` plus filters | Evidence |
+| `/findings` | `?id=FIND-107` plus filters | Findings |
 | `/agents` | `?id=AGT-01` | Expand that agent |
 
-`scope=open` is the implicit default on Findings and is omitted from the URL when active.
+---
+
+## Time
+
+Send ISO timestamps (`detectedAt`, `analyzedAt`, `expires`). Display labels are derived. `expiresInDays` is derived.
 
 ---
 
-## Frontend components and what they consume
+## Events
 
-These are the surfaces a backend change will hit. Props are already domain-shaped.
+The domain naturally emits events such as:
 
-### Shell (no domain API required to start)
+```
+EvidenceAdded
+AgentRunCompleted
+ModelChangeProposed
+ReviewRequested
+ClarificationRequested
+ModelProposalApproved
+ModelVersionPublished
+FindingCreated
+FindingUpdated
+RiskAcceptanceRequested
+RiskAccepted
+AssumptionContradicted
+```
 
-| Component | Role | Backend later |
-|---|---|---|
-| `AppShell` | Layout, ⌘K / ⌘J, sidebar collapse | — |
-| `Sidebar` | Nav + findings count + Ask Pistachio | `METRICS.openFindings`, `GET /me` |
-| `ProjectSwitcher` | Project list | `GET /projects` — currently cosmetic except current project |
-| `TopBar` | Breadcrumb, model version, env select, notifications | `PROJECT`, `GET /notifications`. Env switch should load that environment’s model or show the existing “not published” notice |
-| `CommandPalette` | ⌘K | `GET /search` |
-| `PistachioAssistant` | ⌘J | `POST /assistant/ask` |
-| `NotificationPanel` | Attention list | `GET /notifications` — each item has `to` (frontend route) + `actionLabel` |
-
-### Domain views
-
-| Component | Consumes | Notes |
-|---|---|---|
-| `Overview` | `PROJECT`, `METRICS`, `RISK_POSTURE`, `THREATS_BY_RESIDUAL`, `OPEN_BY_SEVERITY`, `ATTENTION_FINDINGS`, `MODEL_ACTIVITY`, `CURRENT_VERSION` | Architecture mini-map highlights the webhook path |
-| `Model` | Full model collections + `MODEL_VERSIONS` | Version pager is local index into the versions array (0 = current) |
-| `ArchitectureGraph` | `COMPONENTS`, `DATA_FLOWS`, `TRUST_BOUNDARIES` | Needs `x`/`y` on components and `y` on boundaries |
-| `EntityDetails` | One entity id + lookups | Drawer for a selected `CMP-*` / `TM-*` |
-| `AttackPathView` | One `AttackPath` | Steps are ordered; controls on a step have `effective: boolean` |
-| `Evidence` / `EvidenceDetail` | `EVIDENCE`, `AGENTS`, `COMPONENTS` | Detail is a drawer over the same record |
-| `Findings` / `FindingDetail` | `FINDINGS` + lookups | Decisions are the first write path |
-| `RiskAcceptanceModal` | One `Finding` | Collects owner, justification, controls, expiry; **requests** approval |
-| `Agents` / `ActivityTimeline` | `AGENTS`, `AGENT_ACTIVITY` | Expand-in-place, not a marketplace |
-| `SeverityDistribution` / `CoverageMeter` | counts / percent | Overview only |
-| `EntityRef` / `SourceReference` / `RichText` | ids only | Need `entityLabel` + `entityRoute` |
-| `SeverityBadge` / `StatusBadge` | enums in `types.ts` | New status strings need a tone in `Badges.tsx` |
-
-### Writes that exist in the UI today
-
-| UI action | Today | Target API |
-|---|---|---|
-| Mitigate | `setState` → `Mitigating` | `POST …/mitigate` |
-| Mark invalid | `setState` → `Invalid` | `POST …/invalidate` |
-| Accept risk | modal → `Pending approval` | `POST …/risk-acceptances` |
-| Project switch | visual only | `GET /projects/{id}` + route |
-| Environment switch | notice, still shows Production | load that env or keep notice |
-| Ask Pistachio | canned `assistant.ts` | `POST /assistant/ask` |
-
-Everything else is read-only in the demo (evidence analysis, model publish, agent runs). Those are backend/agent jobs that should show up as new `EvidenceSource`, `ModelVersion`, `Finding`, and `ActivityEvent` records.
+These are conceptual domain events. Transport (queue, bus, outbox, or none) is a later architecture decision.
 
 ---
 
-## Recommended integration sequence
+## Consistency rules
 
-Do this in order so the UI stays demoable at every step.
-
-1. **Do not replace pages.** Add `src/api/client.ts` (fetch wrapper, auth header, base URL from `import.meta.env.VITE_API_BASE`).
-2. **Keep `src/data/types.ts`.** If the API drifts, change the type and the UI together.
-3. **Introduce a project loader** (React context or a query library) that fetches `GET /projects/{id}/model`, evidence, findings, agents, activity once and exposes the same names `index.ts` currently exports (`FINDINGS`, `componentById`, `METRICS`, …). Pages keep importing from `@/data` or from that context.
-4. **Move derived values** (`METRICS`, `entityLabel`, `SEARCHABLE`) to functions of the loaded payload, not module-level constants.
-5. **Wire writes** on Findings first — they are the only mutations the UI already performs.
-6. **Replace assistant** canned answers last; the panel already renders `AssistantBlock[]`.
-7. Leave relative-time formatting to the client; send ISO datetimes.
-
-A mechanical first step that compiles:
-
-- Change `src/data/index.ts` from `export const FINDINGS = …` to `export function useProjectData()` that returns the same fields.
-- Point pages at the hook.
-- Swap the hook’s source from static imports to `fetch`.
-
-Until the API exists, keep the static modules as a fixture used when `VITE_API_BASE` is unset. That preserves the demo.
+1. An authoritative model view must never reveal a proposed object through a nested relationship.
+2. If evidence introduces a component, that component exists on some model version and is either proposed or approved.
+3. Finding `targetId`, `threats`, and `evidence` must resolve.
+4. Decision `findingId` must resolve.
+5. Review evidence, change ids, and finding ids must resolve.
+6. Provenance `sourceId` / `targetId` must resolve.
+7. Headline numbers are derived, never duplicated as a second source of truth.
+8. No agent-approved residual risk.
+9. Model publication does not complete findings.
 
 ---
 
-## Auth and tenancy
-
-Not implemented. The UI assumes one signed-in user (Dana Okoye) and one project.
-
-Minimum to go live:
-
-- Cookie or bearer token on the API client.
-- `GET /me` for the sidebar avatar.
-- Project membership; 404/403 if the user cannot see `PRJ-PAY`.
-- Environment as a first-class key: `(projectId, environment)` → one published model.
-- Decision endpoints require a human identity; reject service / agent tokens.
-
----
-
-## Consistency rules (non-negotiable)
-
-The demo’s narrative spine is **PR #182 → EV-041 → CMP-04 Webhook Service → model v18 → FIND-107 / FIND-103**. Real data must be equally consistent:
-
-1. If evidence introduces a component, that component exists on the current model version and appears in the version diff.
-2. If a finding names `targetId: CMP-04`, that component exists.
-3. If a finding lists `evidence: ["EV-041", …]`, those records exist and list the finding in `findings`.
-4. If an agent’s `lastRunEvidenceId` is `EV-041`, that evidence’s `agentId` is that agent (or a documented hand-off).
-5. Version diffs (`added` / `changed` / `removed`) describe the same entities the collections contain.
-6. Headline numbers are derived, never hard-coded a second time.
-7. No invented proof: no fake “trusted by”, no fake confidence gauges, no metrics the model cannot support.
-8. **No agent-approved residual risk.**
-
----
-
-## Enums (copy these)
+## Enums (current frontend)
 
 ```
 Severity:           critical | high | medium | low | info
 FindingType:        Threat | Control Gap | Policy Violation | Architecture Change
                     | Unverified Assumption | Evidence Conflict | Risk Increase
-FindingStatus:      Open | Needs review | Mitigating | Pending approval
-                    | Risk accepted | Resolved | Invalid
+FindingStatus:      Open | In Review | Mitigation Planned | Mitigating
+                    | Risk Acceptance Requested | Risk Accepted | Resolved | Invalid
+ReviewStatus:       Awaiting Review | Awaiting Clarification | Approved | Rejected
+ReviewRevision:     original | edited
 EvidenceType:       Architecture | Code | Pull Request | Meeting
                     | Infrastructure | Policy | Runtime
 EvidenceStatus:     Analyzed | Needs review | Analyzing | Conflict
 ComponentKind:      actor | service | gateway | store | queue
 Exposure:           Internet-facing | Internal | Data layer | External
-Zone:               external | edge | application | data
 Threat category:    Spoofing | Tampering | Repudiation | Information Disclosure
                     | Denial of Service | Elevation of Privilege
 Threat status:      Active | Mitigated | Accepted
-Control family:     Identity | Network | Data | Detection | Application | Governance
 Control status:     Implemented | Partial | Planned | Not implemented
 Assumption status:  Verified | Unverified | Contradicted
 AttackPath status:  Open | Partially mitigated | Mitigated
 Exception status:   Approved | Pending approval | Expired
+Decision type:      Mitigate | Accept Risk | Mark Invalid
 Agent state:        Active | Idle | Paused
-Activity kind:      model | finding | evidence | agent | decision
-Model status:       Current          (extend later: Stale | Computing)
+Model object state: approved | proposed | removed | superseded
 ```
 
-If you add an enum value, add a badge tone in `src/components/Badges.tsx` or the UI will render it as neutral.
+If you add an enum value, add a badge tone in `src/components/Badges.tsx`.
 
 ---
 
 ## What this frontend will not do
 
-- Ingest evidence, run agents, or publish model versions — those are backend jobs.
-- Approve risk. The UI can only **request** approval.
-- Delete the model or rewrite history. New versions are append-only (`v18`, `v17`, …).
-- Act as a SIEM or vuln scanner. Findings are broader than CVEs.
+- Ingest evidence, run agents, or publish versions except as a session mock of human approval
+- Let an agent accept risk
+- Delete the model or rewrite published history
+- Act as a SIEM or vulnerability scanner
 
 ---
 
-## File map for reviewers
+## File map
 
 | You need | Read |
 |---|---|
-| Wire types | `src/data/types.ts` |
-| Derived metrics + id routing | `src/data/index.ts` |
-| Example project graph | `src/data/model.ts`, `src/data/project.ts` |
-| Example findings / evidence / agents | `src/data/findings.ts`, `evidence.ts`, `agents.ts` |
-| Assistant block schema | `src/data/assistant.ts` |
-| Finding writes | `src/pages/Findings.tsx`, `FindingDetail.tsx`, `RiskAcceptanceModal.tsx` |
-| Graph layout fields | `src/components/ArchitectureGraph.tsx` |
+| Wire / DTO types | `src/data/types.ts` |
+| Session / publication mock | `src/lib/model-session.tsx` |
+| Visibility + relation filtering | `src/lib/model-visibility.ts` |
+| Version ordering | `src/lib/model-version.ts` |
+| Seed model / findings / evidence | `src/data/model.ts`, `findings.ts`, `evidence.ts`, `reviews.ts` |
+| Provenance graph | `src/data/provenance.ts` |
+| Assistant contract | `src/data/assistant.ts` |
 | Routes | `src/App.tsx` |
 
-The demo dataset in `src/data/` is a fixture of one coherent project. Use it as the first contract test: if your API can serve `PRJ-PAY` / Production / v18 and the existing pages render without mapping layers, the integration is right.
+The dataset in `src/data/` is one coherent fixture: Payments Platform / Production. Use it as the first contract test. If an API can serve that project and the existing pages render without a mapping layer, the integration matches the prototype.

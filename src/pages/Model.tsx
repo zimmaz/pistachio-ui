@@ -7,11 +7,9 @@ import {
   ATTACK_PATHS,
   COMPONENTS,
   CONTROLS,
-  CURRENT_VERSION,
   DATA_FLOWS,
   METRICS,
   MODEL_SECTIONS,
-  MODEL_VERSIONS,
   PROJECT,
   RISK_EXCEPTIONS,
   SEVERITY_RANK,
@@ -29,7 +27,7 @@ import { EntityRef, RefList } from '@/components/EntityRef'
 import { ArchitectureView, AttackPathsView, ChangesView, ProposedBanner } from '@/components/ModelViews'
 import { useActiveSection } from '@/lib/hooks'
 import { useModelSession } from '@/lib/model-session'
-import { isProposedFor, visibleObjects } from '@/lib/model-visibility'
+import { filterVisibleRelations, isProposedForVersion, visibleObjects } from '@/lib/model-visibility'
 
 const SECTION_IDS = MODEL_SECTIONS.map((s) => s.id)
 const RISKY_PATH = ['CMP-00', 'CMP-04', 'CMP-05', 'CMP-06']
@@ -42,7 +40,7 @@ const VIEWS = [
 
 export function Model() {
   const [params, setParams] = useSearchParams()
-  const [versionIndex, setVersionIndex] = useState(0)
+  const [selectedVersion, setSelectedVersion] = useState<string | null>(null)
   const [selectedStep, setSelectedStep] = useState<number | null>(null)
   const [docProposed, setDocProposed] = useState(false)
   const active = useActiveSection(SECTION_IDS)
@@ -62,7 +60,17 @@ export function Model() {
   const selectedIsProposed = Boolean(entity && (componentById.get(entity)?.proposedInVersion || threatById.get(entity)?.proposedInVersion))
   const showProposed = params.get('proposed') === '1' || selectedIsProposed
   const compare = params.get('compare')
-  const version = MODEL_VERSIONS[versionIndex]
+  const history = session.modelHistory
+  const inspectingVersion =
+    selectedVersion && history.some((item) => item.version === selectedVersion)
+      ? selectedVersion
+      : session.currentVersion
+  const versionIndex = Math.max(
+    0,
+    history.findIndex((item) => item.version === inspectingVersion),
+  )
+  const version = history[versionIndex] ?? history[0]
+  const viewingHistorical = version.version !== session.currentVersion
   const path = ATTACK_PATHS.find((p) => p.id === pathId) ?? ATTACK_PATHS[0]
 
   const patch = useCallback(
@@ -89,12 +97,13 @@ export function Model() {
     () => visibleObjects(ATTACK_PATHS, session.currentVersion, docProposed),
     [docProposed, session.currentVersion],
   )
-  const sortedThreats = useMemo(
-    () =>
-      visibleObjects(THREATS, session.currentVersion, docProposed)
-        .sort((a, b) => SEVERITY_RANK[a.residual] - SEVERITY_RANK[b.residual])
-        .slice(0, 14),
+  const visibleThreats = useMemo(
+    () => visibleObjects(THREATS, session.currentVersion, docProposed),
     [docProposed, session.currentVersion],
+  )
+  const sortedThreats = useMemo(
+    () => [...visibleThreats].sort((a, b) => SEVERITY_RANK[a.residual] - SEVERITY_RANK[b.residual]).slice(0, 14),
+    [visibleThreats],
   )
 
   return (
@@ -122,7 +131,9 @@ export function Model() {
             showProposed={showProposed}
             onShowProposed={(value) => patch({ proposed: value ? '1' : null, view: 'architecture' })}
           />
-          {entity ? <EntityDetails id={entity} onClose={() => patch({ entity: null })} /> : null}
+          {entity ? (
+            <EntityDetails id={entity} onClose={() => patch({ entity: null })} showProposed={showProposed} />
+          ) : null}
         </>
       ) : null}
 
@@ -145,8 +156,8 @@ export function Model() {
                 type="button"
                 className="btn btn--quiet btn--icon"
                 aria-label="Previous version"
-                disabled={versionIndex >= MODEL_VERSIONS.length - 1}
-                onClick={() => setVersionIndex((i) => Math.min(i + 1, MODEL_VERSIONS.length - 1))}
+                disabled={versionIndex >= history.length - 1}
+                onClick={() => setSelectedVersion(history[Math.min(versionIndex + 1, history.length - 1)]?.version ?? null)}
               >
                 <ChevronLeft size={14} aria-hidden="true" />
               </button>
@@ -156,7 +167,7 @@ export function Model() {
                 className="btn btn--quiet btn--icon"
                 aria-label="Next version"
                 disabled={versionIndex === 0}
-                onClick={() => setVersionIndex((i) => Math.max(i - 1, 0))}
+                onClick={() => setSelectedVersion(history[Math.max(versionIndex - 1, 0)]?.version ?? null)}
               >
                 <ChevronRight size={14} aria-hidden="true" />
               </button>
@@ -176,9 +187,9 @@ export function Model() {
                 </li>
               ))}
             </ul>
-            {versionIndex !== 0 ? (
-              <button type="button" className="btn btn--block" onClick={() => setVersionIndex(0)}>
-                Return to {CURRENT_VERSION.version}
+            {viewingHistorical ? (
+              <button type="button" className="btn btn--block" onClick={() => setSelectedVersion(null)}>
+                Return to {session.currentVersion}
               </button>
             ) : null}
           </div>
@@ -223,14 +234,14 @@ export function Model() {
           </div>
         </header>
 
-        {versionIndex !== 0 ? (
+        {viewingHistorical ? (
           <div className="callout callout--info" role="status">
             <History size={14} className="callout__icon" aria-hidden="true" />
             <span>
-              Reading the {version.version} changelog. The document below renders the published model,{' '}
-              {CURRENT_VERSION.version}.{' '}
-              <button type="button" className="linkButton" onClick={() => setVersionIndex(0)}>
-                Return to {CURRENT_VERSION.version}
+              Viewing historical version {version.version}. Current version: {session.currentVersion}. The document
+              below still renders the current published model.{' '}
+              <button type="button" className="linkButton" onClick={() => setSelectedVersion(null)}>
+                Return to {session.currentVersion}
               </button>
             </span>
           </div>
@@ -274,7 +285,6 @@ export function Model() {
               onSelect={(id) => patch({ entity: id })}
               highlightPath={docProposed || session.webhookApproved ? RISKY_PATH : []}
               showProposed={docProposed}
-              includeApprovedProposal={session.webhookApproved}
               newInVersion="v19"
             />
           </div>
@@ -315,7 +325,7 @@ export function Model() {
                     <td className="cell-mono">{component.id}</td>
                     <td className="cell-primary">
                       {component.name}
-                      {isProposedFor(component, session.currentVersion) ? (
+                      {isProposedForVersion(component, session.currentVersion) ? (
                         <span className="chip chip--mono">Proposed for v19 · PR #182</span>
                       ) : null}
                     </td>
@@ -328,7 +338,9 @@ export function Model() {
                       )}
                     </td>
                     <td>{component.authentication}</td>
-                    <td className="cell-num cell-mono">{THREATS.filter((t) => t.target === component.id).length}</td>
+                    <td className="cell-num cell-mono">
+                      {visibleThreats.filter((threat) => threat.target === component.id).length}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -367,16 +379,34 @@ export function Model() {
               <div className="boundaryBlock__head">
                 <EntityRef id={boundary.id} />
                 <span className="boundaryBlock__name">{boundary.name}</span>
-                <span className="chip chip--mono">{boundary.crossings.length} crossings</span>
+                <span className="chip chip--mono">
+                  {
+                    filterVisibleRelations(
+                      boundary.crossings,
+                      (id) => DATA_FLOWS.find((flow) => flow.id === id),
+                      session.currentVersion,
+                      docProposed,
+                    ).length
+                  }{' '}
+                  crossings
+                </span>
               </div>
               <p className="prose">{boundary.description}</p>
               <div className="row row--wrap">
-                {boundary.crossings.map((flowId) => {
-                  const flow = DATA_FLOWS.find((f) => f.id === flowId)!
+                {filterVisibleRelations(
+                  boundary.crossings,
+                  (id) => DATA_FLOWS.find((flow) => flow.id === id),
+                  session.currentVersion,
+                  docProposed,
+                ).map((flowId) => {
+                  const flow = DATA_FLOWS.find((item) => item.id === flowId)!
                   return (
                     <span key={flowId} className="crossingChip">
                       <EntityRef id={flowId} />
                       {componentById.get(flow.from)?.name} → {componentById.get(flow.to)?.name}
+                      {isProposedForVersion(flow, session.currentVersion) ? (
+                        <span className="chip chip--mono">Proposed for v19</span>
+                      ) : null}
                     </span>
                   )
                 })}
@@ -409,7 +439,7 @@ export function Model() {
                     <td className="cell-mono">{flow.protocol}</td>
                     <td>
                       {flow.data}
-                      {isProposedFor(flow, session.currentVersion) ? (
+                      {isProposedForVersion(flow, session.currentVersion) ? (
                         <span className="chip chip--mono">Proposed for v19 · PR #182</span>
                       ) : null}
                       {flow.notes ? <span className="flowNote">{flow.notes}</span> : null}
@@ -462,7 +492,7 @@ export function Model() {
                     <td className="cell-mono">{threat.id}</td>
                     <td className="cell-primary">
                       {threat.title}
-                      {isProposedFor(threat, session.currentVersion) ? (
+                      {isProposedForVersion(threat, session.currentVersion) ? (
                         <span className="chip chip--mono">Proposed for v19 · PR #182</span>
                       ) : null}
                     </td>
@@ -501,7 +531,7 @@ export function Model() {
                 <span className="pathTab__id">{candidate.id}</span>
                 <span className="pathTab__name">
                   {candidate.name}
-                  {isProposedFor(candidate, session.currentVersion) ? ' · proposed' : ''}
+                  {isProposedForVersion(candidate, session.currentVersion) ? ' · proposed' : ''}
                 </span>
                 <SeverityBadge severity={candidate.severity} bare />
               </button>
@@ -665,7 +695,7 @@ export function Model() {
         </ModelSection>
       </article>
 
-      {entity ? <EntityDetails id={entity} onClose={() => patch({ entity: null })} /> : null}
+      {entity ? <EntityDetails id={entity} onClose={() => patch({ entity: null })} showProposed={docProposed} /> : null}
       </>
       )}
     </div>

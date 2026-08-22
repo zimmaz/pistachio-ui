@@ -15,7 +15,7 @@ import {
   threatById,
 } from '@/data'
 import { useModelSession } from '@/lib/model-session'
-import { isProposedFor } from '@/lib/model-visibility'
+import { isProposedForVersion, visibleRelated } from '@/lib/model-visibility'
 import { SeverityBadge, StatusBadge } from './Badges'
 import { EntityRef, SourceChip } from './EntityRef'
 import { ProvenanceChain } from './ProvenanceChain'
@@ -24,7 +24,15 @@ import { ProvenanceChain } from './ProvenanceChain'
  * The Model page's right-hand context panel. It only appears once something is
  * selected, so it never spends space describing nothing.
  */
-export function EntityDetails({ id, onClose }: { id: string; onClose: () => void }) {
+export function EntityDetails({
+  id,
+  onClose,
+  showProposed = false,
+}: {
+  id: string
+  onClose: () => void
+  showProposed?: boolean
+}) {
   const component = componentById.get(id)
   const threat = threatById.get(id)
   const assumption = assumptionById.get(id)
@@ -38,7 +46,7 @@ export function EntityDetails({ id, onClose }: { id: string; onClose: () => void
         </button>
       </div>
 
-      {component ? <ComponentBody id={id} /> : null}
+      {component ? <ComponentBody id={id} showProposed={showProposed} /> : null}
       {threat ? <ThreatBody id={id} /> : null}
       {assumption ? <AssumptionBody id={id} /> : null}
       {!component && !threat && !assumption ? <p className="empty">Nothing selected.</p> : null}
@@ -46,13 +54,21 @@ export function EntityDetails({ id, onClose }: { id: string; onClose: () => void
   )
 }
 
-function ComponentBody({ id }: { id: string }) {
+function ComponentBody({ id, showProposed }: { id: string; showProposed: boolean }) {
   const session = useModelSession()
   const component = componentById.get(id)!
-  const threats = THREATS.filter((t) => t.target === id)
+  const threats = visibleRelated(
+    THREATS.filter((t) => t.target === id),
+    session.currentVersion,
+    showProposed,
+  )
   const controls = CONTROLS.filter((c) => c.components.includes(id))
   const findings = FINDINGS.filter((f) => f.targetId === id)
-  const flows = DATA_FLOWS.filter((f) => f.from === id || f.to === id)
+  const flows = visibleRelated(
+    DATA_FLOWS.filter((f) => f.from === id || f.to === id),
+    session.currentVersion,
+    showProposed,
+  )
   const evidence = new Set(threats.flatMap((t) => t.evidence))
 
   return (
@@ -126,7 +142,7 @@ function ComponentBody({ id }: { id: string }) {
             </span>
           ))}
           <span className="chip chip--mono">
-            {isProposedFor(component, session.currentVersion)
+            {isProposedForVersion(component, session.currentVersion)
               ? 'Proposed for v19 · PR #182'
               : `added ${component.addedInVersion}`}
           </span>
@@ -251,7 +267,7 @@ function ThreatBody({ id }: { id: string }) {
       <div className="row row--wrap contextPanel__badges">
         <SeverityBadge severity={threat.residual} label={`${threat.residual} residual`} />
         <StatusBadge status={threat.status} />
-        {isProposedFor(threat, session.currentVersion) ? (
+        {isProposedForVersion(threat, session.currentVersion) ? (
           <span className="chip chip--mono">Proposed for v19 · PR #182</span>
         ) : null}
       </div>

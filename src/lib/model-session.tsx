@@ -32,7 +32,7 @@ interface ReviewRuntime {
 }
 
 interface ModelSessionValue {
-  currentVersion: 'v18' | 'v19'
+  currentVersion: string
   webhookApproved: boolean
   pendingProposalCount: number
   lastApprovedLabel: string
@@ -89,7 +89,7 @@ export function ModelSessionProvider({ children }: { children: ReactNode }) {
   )
 
   const webhookApproved = reviewStatus('REV-021') === 'Approved'
-  const currentVersion: 'v18' | 'v19' = webhookApproved ? 'v19' : 'v18'
+  const currentVersion = webhookApproved ? 'v19' : 'v18'
 
   const liveReviews = useMemo(
     () =>

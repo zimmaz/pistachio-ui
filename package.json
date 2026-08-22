@@ -8,6 +8,8 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
+    "test": "node scripts/check-versions.mjs && node scripts/check-integrity.mjs",
+    "audit:data": "node scripts/check-integrity.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

@@ -1,5 +1,7 @@
 import { useMemo } from 'react'
 import { COMPONENTS, DATA_FLOWS, TRUST_BOUNDARIES, type DataFlow, type SystemComponent } from '@/data'
+import { useModelSession } from '@/lib/model-session'
+import { isProposedForVersion, visibleObjects } from '@/lib/model-visibility'
 
 interface Props {
   selectedId?: string | null
@@ -9,10 +11,8 @@ interface Props {
   compact?: boolean
   /** Component ids added in the current model version, marked with a delta tick. */
   newInVersion?: string
-  /** When false, proposed-v19 entities are omitted. */
+  /** When false, proposed objects for a later version are omitted. */
   showProposed?: boolean
-  /** Treat proposed entities as current (after REV-021 approval). */
-  includeApprovedProposal?: boolean
 }
 
 const KIND_LABEL: Record<SystemComponent['kind'], string> = {
@@ -30,8 +30,8 @@ export function ArchitectureGraph({
   compact = false,
   newInVersion,
   showProposed = true,
-  includeApprovedProposal = false,
 }: Props) {
+  const session = useModelSession()
   const geo = compact
     ? { colUnit: 176, rowUnit: 62, originX: 34, originY: 30, nodeW: 132, nodeH: 34, pad: 26 }
     : { colUnit: 230, rowUnit: 88, originX: 40, originY: 42, nodeW: 152, nodeH: 46, pad: 34 }
@@ -43,21 +43,13 @@ export function ArchitectureGraph({
   const height = cy(4) + geo.nodeH / 2 + geo.pad
 
   const visibleComponents = useMemo(
-    () =>
-      COMPONENTS.filter((component) => {
-        if (!component.proposedInVersion) return true
-        return showProposed || includeApprovedProposal
-      }),
-    [showProposed, includeApprovedProposal],
+    () => visibleObjects(COMPONENTS, session.currentVersion, showProposed),
+    [session.currentVersion, showProposed],
   )
 
   const visibleFlows = useMemo(
-    () =>
-      DATA_FLOWS.filter((flow) => {
-        if (!flow.proposedInVersion) return true
-        return showProposed || includeApprovedProposal
-      }),
-    [showProposed, includeApprovedProposal],
+    () => visibleObjects(DATA_FLOWS, session.currentVersion, showProposed),
+    [session.currentVersion, showProposed],
   )
 
   const nodes = useMemo(
@@ -157,7 +149,7 @@ export function ArchitectureGraph({
         const d = edgePath(flow)
         if (!d) return null
         const risky = highlightEdges.has(`${flow.from}→${flow.to}`)
-        const proposed = Boolean(flow.proposedInVersion) && !includeApprovedProposal
+        const proposed = isProposedForVersion(flow, session.currentVersion)
         const isNew = newInVersion !== undefined && flow.addedInVersion === newInVersion
         return (
           <g
@@ -174,8 +166,8 @@ export function ArchitectureGraph({
         const selected = selectedId === component.id
         const inPath = highlightPath.includes(component.id)
         const isNew = newInVersion !== undefined && component.addedInVersion === newInVersion
-        const proposed = Boolean(component.proposedInVersion) && !includeApprovedProposal
-        const modified = component.id === 'CMP-05' && (showProposed || includeApprovedProposal) && !includeApprovedProposal
+        const proposed = isProposedForVersion(component, session.currentVersion)
+        const modified = component.id === 'CMP-05' && showProposed && isProposedForVersion({ proposedInVersion: 'v19' }, session.currentVersion)
         const interactive = Boolean(onSelect)
 
         return (

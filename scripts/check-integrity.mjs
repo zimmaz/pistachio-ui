@@ -19,6 +19,8 @@ const catalogs = {
   agents: ids('agents.ts', /\bid: '(AGT-\d+)'/g),
   paths: ids('model.ts', /\bid: '(AP-\d+)'/g),
   assumptions: ids('model.ts', /(?:id: '|a\(')(ASM-[\dA-Z]+)/g),
+  flows: ids('model.ts', /\bid: '(DF-\d+)'/g),
+  controls: ids('model.ts', /\b(?:id: '|c\(')(CTRL-\d+)/g),
 }
 
 const files = ['reviews.ts', 'findings.ts', 'model.ts', 'evidence.ts', 'agents.ts', 'activity.ts', 'assistant.ts', 'provenance.ts', 'project.ts']
@@ -36,6 +38,8 @@ for (const file of files) {
     [/\b(AGT-\d+)\b/g, 'agents'],
     [/\b(AP-\d+)\b/g, 'paths'],
     [/\b(ASM-[\dA-Z]+)\b/g, 'assumptions'],
+    [/\b(DF-\d+)\b/g, 'flows'],
+    [/\b(CTRL-\d+)\b/g, 'controls'],
   ]
   for (const [pattern, kind] of checks) {
     for (const match of text.matchAll(pattern)) {
