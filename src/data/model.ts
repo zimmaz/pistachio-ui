@@ -1,0 +1,764 @@
+import type {
+  Assumption,
+  Asset,
+  AttackPath,
+  Control,
+  DataFlow,
+  RiskException,
+  SystemComponent,
+  Threat,
+  TrustBoundary,
+} from './types'
+
+/* ── Components ────────────────────────────────────────────────────────────
+   x / y are abstract canvas units consumed by ArchitectureGraph. */
+
+export const COMPONENTS: SystemComponent[] = [
+  {
+    id: 'CMP-00',
+    name: 'Acquirer PSP',
+    kind: 'actor',
+    exposure: 'External',
+    zone: 'external',
+    authentication: 'Shared secret (HMAC header)',
+    description:
+      'Third-party payment service provider that posts settlement callbacks to the platform. Outside the production trust boundary and outside Pistachio-observed infrastructure.',
+    dataHandled: ['Payment events'],
+    technologies: ['HTTPS'],
+    addedInVersion: 'v18',
+    x: 2.72,
+    y: 0,
+  },
+  {
+    id: 'CMP-01',
+    name: 'Customer Browser',
+    kind: 'actor',
+    exposure: 'External',
+    zone: 'external',
+    authentication: 'Session cookie + device binding',
+    description:
+      'Customer-controlled browser running the checkout client. Untrusted by definition; all input crossing TB-01 is validated at the gateway.',
+    dataHandled: ['Payment tokens', 'Customer PII'],
+    technologies: ['TypeScript', 'WebAuthn'],
+    addedInVersion: 'v1',
+    x: 0.55,
+    y: 0,
+  },
+  {
+    id: 'CMP-02',
+    name: 'API Gateway',
+    kind: 'gateway',
+    exposure: 'Internet-facing',
+    zone: 'edge',
+    authentication: 'OAuth2 (authorization code) + mTLS upstream',
+    description:
+      'Production edge for all customer traffic. Terminates TLS 1.3, applies the managed WAF rule set, and forwards authenticated requests to the Payment API.',
+    dataHandled: ['Payment tokens', 'Customer PII'],
+    technologies: ['Envoy', 'Terraform'],
+    addedInVersion: 'v1',
+    x: 0.55,
+    y: 1,
+  },
+  {
+    id: 'CMP-04',
+    name: 'Webhook Service',
+    kind: 'service',
+    exposure: 'Internet-facing',
+    zone: 'edge',
+    authentication: 'Shared secret (HMAC header)',
+    description:
+      'Receives settlement callbacks from the acquirer and produces them onto the payment event queue. Introduced by PR #182 and first modelled in v18.',
+    dataHandled: ['Payment events', 'Payment tokens'],
+    technologies: ['Go', 'Terraform'],
+    addedInVersion: 'v18',
+    x: 2.72,
+    y: 1,
+  },
+  {
+    id: 'CMP-03',
+    name: 'Payment API',
+    kind: 'service',
+    exposure: 'Internal',
+    zone: 'application',
+    authentication: 'OAuth2 client credentials + OTP step-up for admin routes',
+    description:
+      'Core payment orchestration service. Owns authorization, capture and refund flows, plus the privileged payment-configuration routes under /admin.',
+    dataHandled: ['Payment tokens', 'Customer PII', 'Payment configuration'],
+    technologies: ['Kotlin', 'PostgreSQL', 'OAuth2'],
+    addedInVersion: 'v1',
+    x: 0.55,
+    y: 2,
+  },
+  {
+    id: 'CMP-05',
+    name: 'Event Queue',
+    kind: 'queue',
+    exposure: 'Internal',
+    zone: 'application',
+    authentication: 'IAM role binding',
+    description:
+      'Durable payment event stream. Two producers since v18 (Payment API and Webhook Service) and one consumer group.',
+    dataHandled: ['Payment events'],
+    technologies: ['Amazon SQS', 'KMS'],
+    addedInVersion: 'v4',
+    x: 2.72,
+    y: 2,
+  },
+  {
+    id: 'CMP-06',
+    name: 'Event Worker',
+    kind: 'service',
+    exposure: 'Internal',
+    zone: 'application',
+    authentication: 'IAM role binding',
+    description:
+      'Consumes payment events, reconciles settlement and writes settlement records to the primary database. Owns the dead-letter queue.',
+    dataHandled: ['Payment events', 'Customer PII'],
+    technologies: ['Kotlin', 'PostgreSQL'],
+    addedInVersion: 'v4',
+    x: 2.72,
+    y: 3,
+  },
+  {
+    id: 'CMP-07',
+    name: 'PostgreSQL',
+    kind: 'store',
+    exposure: 'Data layer',
+    zone: 'data',
+    authentication: 'IAM database auth + service accounts',
+    description:
+      'Primary transactional store. Holds customer records, payment records and settlement history behind the application-to-data trust boundary.',
+    dataHandled: ['Customer PII', 'Payment tokens'],
+    technologies: ['PostgreSQL 16', 'Amazon RDS'],
+    addedInVersion: 'v1',
+    x: 1.5,
+    y: 4,
+  },
+]
+
+export const DATA_FLOWS: DataFlow[] = [
+  {
+    id: 'DF-01',
+    from: 'CMP-01',
+    to: 'CMP-02',
+    protocol: 'HTTPS / TLS 1.3',
+    data: 'Payment request, customer identifiers',
+    crossesBoundary: 'TB-01',
+    authenticated: true,
+    addedInVersion: 'v1',
+  },
+  {
+    id: 'DF-02',
+    from: 'CMP-00',
+    to: 'CMP-04',
+    protocol: 'HTTPS POST /webhooks/payment-events',
+    data: 'Settlement callback payload',
+    crossesBoundary: 'TB-01',
+    authenticated: true,
+    addedInVersion: 'v18',
+    notes: 'HMAC header is verified but no nonce or timestamp window is enforced.',
+  },
+  {
+    id: 'DF-03',
+    from: 'CMP-02',
+    to: 'CMP-03',
+    protocol: 'mTLS / gRPC',
+    data: 'Authorized payment request',
+    crossesBoundary: null,
+    authenticated: true,
+    addedInVersion: 'v1',
+  },
+  {
+    id: 'DF-09',
+    from: 'CMP-02',
+    to: 'CMP-03',
+    protocol: 'mTLS / HTTPS /admin',
+    data: 'Payment configuration changes',
+    crossesBoundary: null,
+    authenticated: true,
+    addedInVersion: 'v14',
+    notes: 'Privileged route. Step-up authentication is OTP-based, not phishing-resistant.',
+  },
+  {
+    id: 'DF-04',
+    from: 'CMP-03',
+    to: 'CMP-07',
+    protocol: 'PostgreSQL wire / TLS',
+    data: 'Customer PII, payment records',
+    crossesBoundary: 'TB-02',
+    authenticated: true,
+    addedInVersion: 'v1',
+  },
+  {
+    id: 'DF-05',
+    from: 'CMP-03',
+    to: 'CMP-05',
+    protocol: 'AMQP / TLS',
+    data: 'Payment events',
+    crossesBoundary: null,
+    authenticated: true,
+    addedInVersion: 'v4',
+  },
+  {
+    id: 'DF-07',
+    from: 'CMP-04',
+    to: 'CMP-05',
+    protocol: 'AMQP / TLS',
+    data: 'External settlement events',
+    crossesBoundary: null,
+    authenticated: true,
+    addedInVersion: 'v18',
+    notes: 'Second producer on the queue. No idempotency key is enforced on ingest.',
+  },
+  {
+    id: 'DF-06',
+    from: 'CMP-05',
+    to: 'CMP-06',
+    protocol: 'AMQP / TLS',
+    data: 'Payment events',
+    crossesBoundary: null,
+    authenticated: true,
+    addedInVersion: 'v4',
+  },
+  {
+    id: 'DF-08',
+    from: 'CMP-06',
+    to: 'CMP-07',
+    protocol: 'PostgreSQL wire / TLS',
+    data: 'Settlement records',
+    crossesBoundary: 'TB-02',
+    authenticated: true,
+    addedInVersion: 'v4',
+  },
+]
+
+export const TRUST_BOUNDARIES: TrustBoundary[] = [
+  {
+    id: 'TB-01',
+    name: 'Internet → Production',
+    description:
+      'Separates untrusted callers from production workloads. Everything crossing this boundary must be authenticated at the edge, rate limited, and logged with a correlation identifier.',
+    y: 0.5,
+    crossings: ['DF-01', 'DF-02'],
+  },
+  {
+    id: 'TB-02',
+    name: 'Application → Data Layer',
+    description:
+      'Separates application workloads from the primary transactional store. Crossings must use scoped service accounts; no workload holds a standing bulk-read grant.',
+    y: 3.5,
+    crossings: ['DF-04', 'DF-08'],
+  },
+]
+
+export const ASSETS: Asset[] = [
+  {
+    id: 'AST-01',
+    name: 'Customer PII',
+    classification: 'Restricted',
+    description:
+      'Name, billing address, contact details and partial card metadata for every customer with a stored payment method.',
+    storedIn: ['CMP-07'],
+    threats: 14,
+  },
+  {
+    id: 'AST-02',
+    name: 'Payment Tokens',
+    classification: 'Restricted',
+    description:
+      'Network tokens and processor references that can be replayed to initiate a charge if disclosed together with a merchant identifier.',
+    storedIn: ['CMP-07', 'CMP-05'],
+    threats: 19,
+  },
+  {
+    id: 'AST-03',
+    name: 'Payment Configuration',
+    classification: 'Confidential',
+    description:
+      'Routing rules, acquirer credentials, fee tables and fraud thresholds. Changes take effect on the next authorization without a deploy.',
+    storedIn: ['CMP-03', 'CMP-07'],
+    threats: 8,
+  },
+]
+
+/* ── Threats ───────────────────────────────────────────────────────────────
+   47 active threats. Residual risk drives the posture distribution on
+   Overview; the counts are derived, never hard-coded. */
+
+const t = (
+  id: string,
+  title: string,
+  category: Threat['category'],
+  target: string,
+  likelihood: Threat['likelihood'],
+  impact: Threat['impact'],
+  residual: Threat['residual'],
+  controls: string[],
+  findings: string[] = [],
+  evidence: string[] = [],
+): Threat => ({
+  id,
+  title,
+  category,
+  target,
+  likelihood,
+  impact,
+  residual,
+  status: 'Active',
+  controls,
+  findings,
+  evidence,
+})
+
+export const THREATS: Threat[] = [
+  {
+    ...t('TM-003', 'Privileged payment-configuration change without phishing-resistant authentication', 'Elevation of Privilege', 'CMP-03', 'Medium', 'High', 'critical', ['CTRL-14', 'CTRL-22'], ['FIND-103'], ['EV-039', 'EV-040', 'EV-030']),
+    prerequisites: [
+      'Attacker obtains a valid administrator username and password',
+      'Attacker relays the OTP challenge in real time',
+      'Administrator session originates from an allowlisted network',
+    ],
+    assumptions: ['ASM-02'],
+    detail:
+      'The /admin/payment-config route accepts an OTP-based step-up challenge. SEC-IAM-22 requires phishing-resistant authentication for any interface that can alter money movement. A relayed OTP therefore yields a privileged session with no further barrier.',
+  },
+  {
+    ...t('TM-011', 'Compromised CI credential deploys unreviewed code to the Payment API', 'Tampering', 'CMP-03', 'Low', 'High', 'critical', ['CTRL-07', 'CTRL-19', 'CTRL-33'], [], ['EV-038', 'EV-025']),
+    prerequisites: ['Attacker obtains a deploy-scoped CI token', 'Branch protection bypass or self-approval'],
+    detail:
+      'Deployment credentials are long-lived and scoped per environment. A leaked production token permits an image push without a second reviewer.',
+  },
+  {
+    ...t('TM-019', 'Service-account credential reuse permits bulk export of customer records', 'Information Disclosure', 'CMP-07', 'Medium', 'High', 'critical', ['CTRL-05', 'CTRL-11', 'CTRL-27'], ['FIND-102'], ['EV-042', 'EV-038']),
+    prerequisites: ['Attacker reaches an application workload', 'Service account retains bulk SELECT on customer tables'],
+    assumptions: ['ASM-03'],
+    detail:
+      'Runtime observation shows one database service account in use by three workloads. Any one of the three becomes a path to the full customer table.',
+  },
+
+  {
+    ...t('TM-014', 'Token theft enables unauthorized payment requests', 'Spoofing', 'CMP-03', 'Medium', 'High', 'high', ['CTRL-01', 'CTRL-09', 'CTRL-22'], ['FIND-096'], ['EV-034', 'EV-039', 'EV-042']),
+    prerequisites: [
+      'Attacker captures a bearer token from a client, log sink or proxy',
+      'Token remains valid for the replay window (currently 12 hours)',
+      'Request originates from any network — no client binding is enforced',
+    ],
+    assumptions: ['ASM-01', 'ASM-02'],
+    detail:
+      'Payment API accepts OAuth2 client-credential bearer tokens with a 12-hour lifetime and no sender constraint. A token captured anywhere in the request path can be replayed from an unrelated network to initiate a payment on behalf of the merchant.',
+  },
+  {
+    ...t('TM-027', 'Log sink retains bearer tokens in request metadata', 'Information Disclosure', 'CMP-02', 'Medium', 'High', 'high', ['CTRL-13', 'CTRL-27'], [], ['EV-042', 'EV-039']),
+    detail:
+      'Gateway access logs record the full Authorization header on 5xx responses. The log sink is readable by the wider engineering group.',
+  },
+  {
+    ...t('TM-041', 'Replayed webhook callback injects duplicate settlement events', 'Tampering', 'CMP-04', 'High', 'High', 'high', ['CTRL-02', 'CTRL-30'], ['FIND-107'], ['EV-041', 'EV-039']),
+    prerequisites: [
+      'Attacker observes one signed callback in transit or in a partner log',
+      'Callback is replayed inside the (unbounded) signature validity window',
+    ],
+    assumptions: ['ASM-05'],
+    detail:
+      'The webhook verifies an HMAC over the body but enforces neither a nonce nor a timestamp window. A captured callback can be replayed indefinitely, producing duplicate settlement events on the queue.',
+  },
+  t('TM-008', 'Merchant identifier substitution in the authorization request', 'Spoofing', 'CMP-02', 'Medium', 'High', 'high', ['CTRL-04', 'CTRL-18'], [], ['EV-034']),
+  t('TM-022', 'Refund endpoint permits negative-amount adjustments', 'Tampering', 'CMP-03', 'Low', 'High', 'high', ['CTRL-18', 'CTRL-25'], [], ['EV-034']),
+  t('TM-030', 'Unbounded payment-initiation rate exhausts acquirer quota', 'Denial of Service', 'CMP-02', 'High', 'Medium', 'high', ['CTRL-03', 'CTRL-31'], ['FIND-101'], ['EV-042']),
+  t('TM-036', 'Idempotency key collision reprocesses a settled payment', 'Tampering', 'CMP-06', 'Medium', 'High', 'high', ['CTRL-25', 'CTRL-30'], [], ['EV-034', 'EV-040']),
+  {
+    ...t('TM-039', 'Queue payloads retained beyond the policy window widen the disclosure surface', 'Information Disclosure', 'CMP-05', 'Medium', 'High', 'high', ['CTRL-10', 'CTRL-27'], ['FIND-105'], ['EV-037', 'EV-040']),
+    detail:
+      'Retention on the payment event queue is 14 days. SEC-DATA-07 caps payload retention containing payment tokens at 24 hours.',
+  },
+
+  t('TM-001', 'Session fixation on the checkout client', 'Spoofing', 'CMP-01', 'Low', 'Medium', 'medium', ['CTRL-01', 'CTRL-06'], [], ['EV-039']),
+  t('TM-005', 'Cross-site request forgery on stored-method deletion', 'Tampering', 'CMP-01', 'Low', 'Medium', 'medium', ['CTRL-06'], [], ['EV-034']),
+  t('TM-007', 'Verbose error responses disclose upstream topology', 'Information Disclosure', 'CMP-02', 'Medium', 'Low', 'medium', ['CTRL-13'], [], ['EV-034']),
+  t('TM-012', 'Missing audit trail for configuration reads', 'Repudiation', 'CMP-03', 'Medium', 'Medium', 'medium', ['CTRL-22'], [], ['EV-030']),
+  t('TM-016', 'Dead-letter queue accumulates unprocessed payment events unnoticed', 'Denial of Service', 'CMP-06', 'Medium', 'Medium', 'medium', ['CTRL-24'], ['FIND-090'], ['EV-040']),
+  t('TM-018', 'Connection-pool exhaustion under settlement backlog', 'Denial of Service', 'CMP-07', 'Medium', 'Medium', 'medium', ['CTRL-24', 'CTRL-32'], [], ['EV-042']),
+  t('TM-021', 'Schema drift between the diagram and deployed infrastructure', 'Tampering', 'CMP-06', 'Medium', 'Medium', 'medium', ['CTRL-33'], ['FIND-093'], ['EV-039', 'EV-038']),
+  t('TM-024', 'Stale acquirer credential remains valid after rotation', 'Spoofing', 'CMP-03', 'Low', 'Medium', 'medium', ['CTRL-09'], [], ['EV-030']),
+  t('TM-026', 'Backup snapshots are not scoped to the data-layer boundary', 'Information Disclosure', 'CMP-07', 'Low', 'High', 'medium', ['CTRL-11', 'CTRL-28'], [], ['EV-038']),
+  t('TM-029', 'Webhook ownership is undefined for incident response', 'Repudiation', 'CMP-04', 'Medium', 'Medium', 'medium', ['CTRL-34'], ['FIND-104'], ['EV-040']),
+  t('TM-033', 'Payment token appears in browser performance traces', 'Information Disclosure', 'CMP-01', 'Low', 'Medium', 'medium', ['CTRL-13'], [], ['EV-042']),
+  t('TM-035', 'Worker retries write partial settlement records', 'Tampering', 'CMP-06', 'Medium', 'Medium', 'medium', ['CTRL-25'], [], ['EV-040']),
+  t('TM-038', 'Egress allowlist permits unreviewed outbound destinations', 'Information Disclosure', 'CMP-06', 'Low', 'High', 'medium', ['CTRL-08'], ['FIND-093'], ['EV-038']),
+  t('TM-043', 'Gateway health endpoint exposes build and dependency versions', 'Information Disclosure', 'CMP-02', 'High', 'Low', 'medium', ['CTRL-13'], [], ['EV-042']),
+  t('TM-046', 'Second queue producer bypasses producer-side schema validation', 'Tampering', 'CMP-05', 'Medium', 'Medium', 'medium', ['CTRL-30'], ['FIND-107'], ['EV-041']),
+
+  t('TM-002', 'Clickjacking on the payment confirmation view', 'Tampering', 'CMP-01', 'Low', 'Low', 'low', ['CTRL-06'], [], ['EV-034']),
+  t('TM-004', 'Autofill leaks partial card metadata to a sibling origin', 'Information Disclosure', 'CMP-01', 'Low', 'Low', 'low', ['CTRL-06'], [], ['EV-039']),
+  t('TM-006', 'TLS downgrade attempt against the production edge', 'Spoofing', 'CMP-02', 'Low', 'Medium', 'low', ['CTRL-12'], [], ['EV-038']),
+  t('TM-009', 'Correlation identifier is guessable across tenants', 'Information Disclosure', 'CMP-02', 'Low', 'Low', 'low', ['CTRL-13'], [], ['EV-034']),
+  t('TM-010', 'Client clock skew rejects otherwise valid requests', 'Denial of Service', 'CMP-01', 'Medium', 'Low', 'low', ['CTRL-24'], [], ['EV-042']),
+  t('TM-013', 'Cached DNS record points at a decommissioned NAT route', 'Spoofing', 'CMP-02', 'Low', 'Low', 'low', ['CTRL-08'], [], ['EV-038']),
+  t('TM-015', 'Support tooling reads payment configuration without justification', 'Information Disclosure', 'CMP-03', 'Low', 'Medium', 'low', ['CTRL-22', 'CTRL-27'], [], ['EV-030']),
+  t('TM-017', 'Queue consumer lag misreported by the metrics exporter', 'Repudiation', 'CMP-05', 'Medium', 'Low', 'low', ['CTRL-24'], [], ['EV-042']),
+  t('TM-020', 'Terraform state contains a plaintext connection string', 'Information Disclosure', 'CMP-07', 'Low', 'Medium', 'low', ['CTRL-11'], [], ['EV-038']),
+  t('TM-023', 'Duplicate settlement email sent to the customer', 'Repudiation', 'CMP-06', 'Medium', 'Low', 'low', ['CTRL-25'], [], ['EV-040']),
+  t('TM-025', 'Unpinned base image introduces an unreviewed dependency', 'Tampering', 'CMP-03', 'Medium', 'Low', 'low', ['CTRL-19'], [], ['EV-025']),
+  t('TM-028', 'Gateway access log retention exceeds the analytics need', 'Information Disclosure', 'CMP-02', 'Medium', 'Low', 'low', ['CTRL-10'], [], ['EV-037']),
+  t('TM-031', 'Read replica lag serves a stale fraud threshold', 'Tampering', 'CMP-07', 'Low', 'Low', 'low', ['CTRL-32'], [], ['EV-042']),
+  t('TM-032', 'Worker restart replays the in-flight message batch', 'Tampering', 'CMP-06', 'Medium', 'Low', 'low', ['CTRL-25'], [], ['EV-040']),
+  t('TM-034', 'Webhook 5xx response reveals internal queue naming', 'Information Disclosure', 'CMP-04', 'Low', 'Low', 'low', ['CTRL-13'], [], ['EV-041']),
+  t('TM-037', 'Operator bypasses the change window during an incident', 'Repudiation', 'CMP-03', 'Low', 'Medium', 'low', ['CTRL-22', 'CTRL-34'], [], ['EV-036']),
+  t('TM-040', 'Unused legacy endpoint remains routable at the edge', 'Elevation of Privilege', 'CMP-02', 'Low', 'Medium', 'low', ['CTRL-04'], [], ['EV-034']),
+  t('TM-042', 'Metrics endpoint is reachable from the application subnet', 'Information Disclosure', 'CMP-06', 'Low', 'Low', 'low', ['CTRL-08'], [], ['EV-038']),
+  t('TM-044', 'Browser idempotency key is not cryptographically unique', 'Tampering', 'CMP-01', 'Low', 'Low', 'low', ['CTRL-25'], ['FIND-094'], ['EV-040']),
+  t('TM-045', 'Documented TLS policy trails the deployed policy', 'Repudiation', 'CMP-02', 'Medium', 'Low', 'low', ['CTRL-33'], ['FIND-106'], ['EV-038']),
+  t('TM-047', 'Webhook retry storm from the acquirer saturates the queue', 'Denial of Service', 'CMP-04', 'Low', 'Medium', 'low', ['CTRL-03', 'CTRL-24'], [], ['EV-041']),
+]
+
+/* ── Controls ──────────────────────────────────────────────────────────── */
+
+const c = (
+  id: string,
+  name: string,
+  family: Control['family'],
+  status: Control['status'],
+  components: string[],
+  verifiedBy: string,
+): Control => ({ id, name, family, status, components, verifiedBy })
+
+export const CONTROLS: Control[] = [
+  c('CTRL-01', 'OAuth2 authorization-code flow with PKCE', 'Identity', 'Implemented', ['CMP-01', 'CMP-02'], 'EV-034'),
+  c('CTRL-02', 'HMAC signature verification on inbound webhooks', 'Application', 'Partial', ['CMP-04'], 'EV-041'),
+  c('CTRL-03', 'Edge rate limiting per client and per route', 'Network', 'Partial', ['CMP-02', 'CMP-04'], 'EV-038'),
+  c('CTRL-04', 'Route allowlist at the production edge', 'Network', 'Implemented', ['CMP-02'], 'EV-038'),
+  c('CTRL-05', 'Scoped database service accounts per workload', 'Identity', 'Partial', ['CMP-03', 'CMP-06', 'CMP-07'], 'EV-042'),
+  c('CTRL-06', 'Browser security headers (CSP, frame-ancestors, SameSite)', 'Application', 'Implemented', ['CMP-01', 'CMP-02'], 'EV-038'),
+  c('CTRL-07', 'Two-reviewer approval on production deploys', 'Governance', 'Implemented', ['CMP-03', 'CMP-04', 'CMP-06'], 'EV-025'),
+  c('CTRL-08', 'Egress allowlist for application subnets', 'Network', 'Partial', ['CMP-03', 'CMP-06'], 'EV-038'),
+  c('CTRL-09', 'Automated credential rotation (90-day maximum)', 'Identity', 'Implemented', ['CMP-03', 'CMP-04'], 'EV-030'),
+  c('CTRL-10', 'Data retention policy enforcement job', 'Data', 'Not implemented', ['CMP-05', 'CMP-02'], 'EV-037'),
+  c('CTRL-11', 'Customer-managed encryption keys at rest', 'Data', 'Partial', ['CMP-07', 'CMP-05'], 'EV-038'),
+  c('CTRL-12', 'TLS 1.3 minimum with HSTS preload', 'Network', 'Implemented', ['CMP-02'], 'EV-038'),
+  c('CTRL-13', 'Sensitive-field redaction in logs and traces', 'Detection', 'Partial', ['CMP-02', 'CMP-03', 'CMP-06'], 'EV-042'),
+  c('CTRL-14', 'Phishing-resistant MFA for privileged access', 'Identity', 'Partial', ['CMP-03'], 'EV-030'),
+  c('CTRL-15', 'Tokenization of card data at the edge', 'Data', 'Implemented', ['CMP-02', 'CMP-03'], 'EV-034'),
+  c('CTRL-16', 'Static application security testing on every pull request', 'Application', 'Implemented', ['CMP-03', 'CMP-04', 'CMP-06'], 'EV-025'),
+  c('CTRL-17', 'Dependency vulnerability gate at build time', 'Application', 'Implemented', ['CMP-03', 'CMP-04', 'CMP-06'], 'EV-025'),
+  c('CTRL-18', 'Server-side authorization on every money-moving route', 'Application', 'Implemented', ['CMP-03'], 'EV-034'),
+  c('CTRL-19', 'Signed container images with admission verification', 'Application', 'Implemented', ['CMP-03', 'CMP-04', 'CMP-06'], 'EV-025'),
+  c('CTRL-20', 'Network segmentation between edge and application subnets', 'Network', 'Implemented', ['CMP-02', 'CMP-03'], 'EV-038'),
+  c('CTRL-21', 'Secrets manager with no plaintext secrets in source', 'Data', 'Implemented', ['CMP-03', 'CMP-04', 'CMP-06'], 'EV-038'),
+  c('CTRL-22', 'Privileged session recording and alerting', 'Detection', 'Implemented', ['CMP-03'], 'EV-030'),
+  c('CTRL-23', 'Quarterly access recertification for privileged roles', 'Governance', 'Implemented', ['CMP-03', 'CMP-07'], 'EV-030'),
+  c('CTRL-24', 'Saturation and consumer-lag alerting', 'Detection', 'Implemented', ['CMP-05', 'CMP-06', 'CMP-07'], 'EV-042'),
+  c('CTRL-25', 'Idempotency keys on all write operations', 'Application', 'Partial', ['CMP-03', 'CMP-06'], 'EV-034'),
+  c('CTRL-26', 'Anomaly detection on authorization volume', 'Detection', 'Implemented', ['CMP-02', 'CMP-03'], 'EV-042'),
+  c('CTRL-27', 'Data-access audit trail with 400-day retention', 'Detection', 'Implemented', ['CMP-07', 'CMP-03'], 'EV-030'),
+  c('CTRL-28', 'Encrypted, access-controlled backup snapshots', 'Data', 'Implemented', ['CMP-07'], 'EV-038'),
+  c('CTRL-29', 'Break-glass account with out-of-band approval', 'Identity', 'Implemented', ['CMP-03', 'CMP-07'], 'EV-030'),
+  c('CTRL-30', 'Schema validation on queue ingest', 'Application', 'Partial', ['CMP-05'], 'EV-041'),
+  c('CTRL-31', 'Managed WAF rule set at the edge', 'Network', 'Implemented', ['CMP-02'], 'EV-038'),
+  c('CTRL-32', 'Read-replica routing for reporting workloads', 'Data', 'Implemented', ['CMP-07'], 'EV-038'),
+  c('CTRL-33', 'Infrastructure drift detection against declared state', 'Detection', 'Implemented', ['CMP-02', 'CMP-03', 'CMP-06'], 'EV-038'),
+  c('CTRL-34', 'Documented service ownership and on-call rotation', 'Governance', 'Planned', ['CMP-04'], 'EV-040'),
+  c('CTRL-35', 'Annual penetration test of the payment surface', 'Governance', 'Implemented', ['CMP-02', 'CMP-03'], 'EV-031'),
+  c('CTRL-36', 'Threat-model review gate before production launch', 'Governance', 'Implemented', ['CMP-03', 'CMP-04'], 'EV-030'),
+  c('CTRL-37', 'Tabletop exercise for payment-fraud scenarios', 'Governance', 'Planned', ['CMP-03'], 'EV-031'),
+  c('CTRL-38', 'Customer-facing incident notification runbook', 'Governance', 'Planned', ['CMP-03', 'CMP-07'], 'EV-031'),
+]
+
+/* ── Assumptions ───────────────────────────────────────────────────────── */
+
+export const ASSUMPTIONS: Assumption[] = [
+  {
+    id: 'ASM-01',
+    statement: 'Bearer tokens issued to merchants never leave the merchant server environment.',
+    status: 'Unverified',
+    source: 'EV-034',
+    owner: 'Payments Engineering',
+    relatedThreats: ['TM-014'],
+  },
+  {
+    id: 'ASM-02',
+    statement: 'All privileged administrators are enrolled in phishing-resistant authenticators.',
+    status: 'Contradicted',
+    source: 'EV-030',
+    owner: 'AppSec',
+    relatedThreats: ['TM-003', 'TM-014'],
+  },
+  {
+    id: 'ASM-03',
+    statement: 'Each workload authenticates to PostgreSQL with a dedicated service account.',
+    status: 'Contradicted',
+    source: 'EV-042',
+    owner: 'Platform Engineering',
+    relatedThreats: ['TM-019'],
+  },
+  {
+    id: 'ASM-04',
+    statement: 'Card data is tokenized at the edge and never reaches the Payment API in raw form.',
+    status: 'Verified',
+    source: 'EV-034',
+    owner: 'Payments Engineering',
+    relatedThreats: ['TM-015'],
+  },
+  {
+    id: 'ASM-05',
+    statement: 'The acquirer signs every callback and will not re-send a previously delivered event.',
+    status: 'Unverified',
+    source: 'EV-040',
+    owner: 'Payments Engineering',
+    relatedThreats: ['TM-041'],
+  },
+  {
+    id: 'ASM-06',
+    statement: 'Customer records at rest are encrypted with a customer-managed key.',
+    status: 'Unverified',
+    source: 'EV-040',
+    owner: 'Platform Engineering',
+    relatedThreats: ['TM-026'],
+  },
+  {
+    id: 'ASM-07',
+    statement: 'Event Worker retries are idempotent for settlement writes.',
+    status: 'Verified',
+    source: 'EV-040',
+    owner: 'Payments Engineering',
+    relatedThreats: ['TM-032', 'TM-035'],
+  },
+  {
+    id: 'ASM-08',
+    statement: 'The production edge is the only ingress into the production network.',
+    status: 'Verified',
+    source: 'EV-038',
+    owner: 'Platform Engineering',
+    relatedThreats: ['TM-013', 'TM-040'],
+  },
+]
+
+/* ── Attack paths ──────────────────────────────────────────────────────── */
+
+export const ATTACK_PATHS: AttackPath[] = [
+  {
+    id: 'AP-01',
+    name: 'Stolen merchant token to customer PII',
+    severity: 'high',
+    target: 'AST-01',
+    likelihood: 'Medium',
+    status: 'Partially mitigated',
+    findings: ['FIND-096', 'FIND-102'],
+    steps: [
+      {
+        order: 1,
+        layer: 'Actor',
+        label: 'External attacker',
+        detail: 'Unauthenticated actor on the public internet with access to a captured merchant credential.',
+        controls: [],
+      },
+      {
+        order: 2,
+        layer: 'Technique',
+        label: 'Compromised OAuth token',
+        detail:
+          'A merchant bearer token captured from a proxy log is replayed. Tokens are valid for 12 hours and are not bound to a sender.',
+        controls: [
+          { id: 'CTRL-09', name: 'Credential rotation', effective: false },
+          { id: 'CTRL-26', name: 'Authorization volume anomaly detection', effective: true },
+        ],
+      },
+      {
+        order: 3,
+        layer: 'Component',
+        label: 'Payment API',
+        detail: 'The token authorizes read and write access to the merchant scope on the payment surface.',
+        entityId: 'CMP-03',
+        controls: [
+          { id: 'CTRL-18', name: 'Server-side authorization', effective: true },
+          { id: 'CTRL-01', name: 'OAuth2 with PKCE', effective: false },
+        ],
+      },
+      {
+        order: 4,
+        layer: 'Privilege',
+        label: 'Service account payments-api-rw',
+        detail:
+          'The API reaches the database with a shared service account that carries bulk SELECT on customer tables.',
+        controls: [{ id: 'CTRL-05', name: 'Scoped service accounts', effective: false }],
+      },
+      {
+        order: 5,
+        layer: 'Component',
+        label: 'PostgreSQL',
+        detail: 'Crossing TB-02. Query volume is logged but not rate limited per service account.',
+        entityId: 'CMP-07',
+        controls: [
+          { id: 'CTRL-27', name: 'Data-access audit trail', effective: true },
+          { id: 'CTRL-11', name: 'Customer-managed keys', effective: false },
+        ],
+      },
+      {
+        order: 6,
+        layer: 'Asset',
+        label: 'Customer PII',
+        detail: 'Full customer records for every account with a stored payment method.',
+        entityId: 'AST-01',
+        controls: [],
+      },
+    ],
+  },
+  {
+    id: 'AP-02',
+    name: 'Credential phishing to payment configuration',
+    severity: 'critical',
+    target: 'AST-03',
+    likelihood: 'Medium',
+    status: 'Open',
+    findings: ['FIND-103'],
+    steps: [
+      {
+        order: 1,
+        layer: 'Actor',
+        label: 'External attacker',
+        detail: 'Actor with the capability to run a real-time credential relay against a named administrator.',
+        controls: [],
+      },
+      {
+        order: 2,
+        layer: 'Technique',
+        label: 'Credential phishing with OTP relay',
+        detail:
+          'A proxy captures the password and forwards the OTP challenge inside its validity window. Phishing-resistant authenticators would break this step.',
+        controls: [{ id: 'CTRL-14', name: 'Phishing-resistant MFA', effective: false }],
+      },
+      {
+        order: 3,
+        layer: 'Privilege',
+        label: 'Administrator account',
+        detail: 'Privileged role with write access to payment routing and fee configuration.',
+        controls: [{ id: 'CTRL-23', name: 'Quarterly access recertification', effective: true }],
+      },
+      {
+        order: 4,
+        layer: 'Component',
+        label: 'Payment API /admin endpoint',
+        detail: 'Privileged route reachable through the edge once a session is established. Guarded by DF-09.',
+        entityId: 'CMP-03',
+        controls: [
+          { id: 'CTRL-22', name: 'Privileged session recording', effective: true },
+          { id: 'CTRL-18', name: 'Server-side authorization', effective: true },
+        ],
+      },
+      {
+        order: 5,
+        layer: 'Asset',
+        label: 'Payment configuration',
+        detail:
+          'Routing rules and fraud thresholds take effect on the next authorization with no deploy and no second approval.',
+        entityId: 'AST-03',
+        controls: [],
+      },
+    ],
+  },
+  {
+    id: 'AP-03',
+    name: 'Webhook replay to duplicated settlement',
+    severity: 'high',
+    target: 'AST-02',
+    likelihood: 'High',
+    status: 'Open',
+    findings: ['FIND-107'],
+    steps: [
+      {
+        order: 1,
+        layer: 'Actor',
+        label: 'Acquirer impersonator',
+        detail: 'Actor able to observe one signed callback, in transit or from a partner-side log.',
+        controls: [],
+      },
+      {
+        order: 2,
+        layer: 'Technique',
+        label: 'Replayed signed callback',
+        detail: 'The HMAC remains valid indefinitely: no nonce, no timestamp window, no delivery-identifier ledger.',
+        controls: [{ id: 'CTRL-02', name: 'HMAC signature verification', effective: false }],
+      },
+      {
+        order: 3,
+        layer: 'Component',
+        label: 'Webhook Service',
+        detail: 'Crossing TB-01 via DF-02. Introduced by PR #182 and modelled for the first time in v18.',
+        entityId: 'CMP-04',
+        controls: [{ id: 'CTRL-03', name: 'Edge rate limiting', effective: false }],
+      },
+      {
+        order: 4,
+        layer: 'Component',
+        label: 'Event Queue',
+        detail: 'Second producer on the queue. Schema is validated on ingest; delivery identity is not.',
+        entityId: 'CMP-05',
+        controls: [{ id: 'CTRL-30', name: 'Schema validation on ingest', effective: true }],
+      },
+      {
+        order: 5,
+        layer: 'Component',
+        label: 'Event Worker',
+        detail: 'Consumes the duplicate event and reconciles it as a distinct settlement.',
+        entityId: 'CMP-06',
+        controls: [{ id: 'CTRL-25', name: 'Idempotency keys', effective: false }],
+      },
+      {
+        order: 6,
+        layer: 'Asset',
+        label: 'Payment tokens',
+        detail: 'Duplicated settlement records reference live payment tokens and misstate the merchant balance.',
+        entityId: 'AST-02',
+        controls: [],
+      },
+    ],
+  },
+]
+
+/* ── Risk exceptions ───────────────────────────────────────────────────── */
+
+export const RISK_EXCEPTIONS: RiskException[] = [
+  {
+    id: 'EXC-021',
+    findingId: 'FIND-064',
+    findingTitle: 'Admin console permits OTP-based step-up authentication',
+    residual: 'high',
+    riskOwner: 'Payments Director',
+    securityApprover: 'AppSec Director',
+    compensatingControls: ['VPN-only access', 'IP allowlist', 'Enhanced monitoring'],
+    expires: '30 Nov 2026',
+    expiresInDays: 100,
+    status: 'Approved',
+    justification:
+      'Rollout of hardware authenticators to the payments operations team is scheduled for Q4. Until then the console stays reachable only from the managed network, and every privileged session is recorded.',
+    scopeNote:
+      'Scope covers the legacy admin console only. It does not cover /admin/payment-config on the Payment API — see FIND-103.',
+  },
+  {
+    id: 'EXC-019',
+    findingId: 'FIND-071',
+    findingTitle: 'Queue encryption uses platform-managed keys instead of a customer-managed key',
+    residual: 'medium',
+    riskOwner: 'Platform Director',
+    securityApprover: 'AppSec Director',
+    compensatingControls: ['Queue access restricted to two IAM roles', 'Key-usage alerting'],
+    expires: '28 Aug 2026',
+    expiresInDays: 6,
+    status: 'Approved',
+    justification:
+      'Key migration was deferred behind the settlement re-platform. The acceptance was granted for one quarter and is now inside its final week.',
+  },
+  {
+    id: 'EXC-023',
+    findingId: 'FIND-096',
+    findingTitle: 'Service-to-service calls accept long-lived client credentials',
+    residual: 'high',
+    riskOwner: 'Payments Director',
+    securityApprover: 'AppSec Director',
+    compensatingControls: ['Authorization volume anomaly detection'],
+    expires: '31 Oct 2026',
+    expiresInDays: 70,
+    status: 'Pending approval',
+    justification:
+      'Requested while sender-constrained tokens are implemented. Awaiting security approval; no approval has been recorded.',
+  },
+]

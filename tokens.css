@@ -1,0 +1,152 @@
+/* Hallmark · genre: modern-minimal · macrostructure: Map / Diagram
+ * theme: custom · vibe: "forest-dark security instrument panel"
+ * paper: oklch(12% 0.012 145) · accent: oklch(83% 0.155 110) pistachio
+ * display: Space Grotesk · body: Inter · technical: JetBrains Mono
+ * axes: paper-band=dark · display-style=grotesk-sans · accent-hue=chromatic-other
+ * nav: N3 side-rail · footer: none (application shell)
+ * Palette derived from the Pistachio pixel-art mark (banner.png).
+ * Hallmark · pre-emit critique: P5 H4 E4 S5 R4 V4
+ */
+
+:root {
+  /* ── Surfaces ──────────────────────────────────────────────────────────
+     Dark elevation: each level gains ~3% lightness. Never pure black. */
+  --background: oklch(12% 0.012 145);
+  --surface-1: oklch(15.5% 0.014 148);
+  --surface-2: oklch(19% 0.018 150);
+  --surface-3: oklch(22.5% 0.021 148);
+  --surface-raised: oklch(26% 0.024 146);
+  --surface-inset: oklch(10% 0.01 145);
+  --scrim: oklch(7% 0.008 145 / 0.72);
+
+  /* ── Borders ─────────────────────────────────────────────────────────── */
+  --border: oklch(26% 0.016 148);
+  --border-strong: oklch(34% 0.02 145);
+  --border-hover: oklch(40% 0.024 145);
+  --border-accent: oklch(46% 0.07 120);
+  --scrollbar-hover: oklch(42% 0.02 145);
+  --status-warning-ring: oklch(78% 0.13 78 / 0.35);
+  --status-warning-ring-strong: oklch(78% 0.13 78 / 0.45);
+  --status-success-ring: oklch(74% 0.11 152 / 0.35);
+  --risk-high-ring: oklch(69% 0.152 48 / 0.4);
+  --risk-high-strike: oklch(69% 0.152 48 / 0.5);
+
+  /* ── Text ────────────────────────────────────────────────────────────── */
+  --text-primary: oklch(93% 0.008 130);
+  --text-secondary: oklch(76% 0.012 140);
+  --text-muted: oklch(63% 0.014 143);
+  --text-faint: oklch(50% 0.014 145);
+  --text-on-brand: oklch(16% 0.03 130);
+
+  /* ── Brand ───────────────────────────────────────────────────────────── */
+  --brand: oklch(72% 0.14 118);
+  --brand-muted: oklch(55% 0.105 122);
+  --brand-emphasis: oklch(83% 0.155 110);
+  --brand-deep: oklch(36% 0.062 128);
+  --brand-wash: oklch(72% 0.14 118 / 0.12);
+  --brand-hairline: oklch(72% 0.14 118 / 0.28);
+  --shell: oklch(89% 0.062 82);
+  --shell-cream: oklch(96% 0.045 100);
+
+  /* ── Risk semantics ──────────────────────────────────────────────────── */
+  --risk-critical: oklch(64% 0.178 22);
+  --risk-high: oklch(69% 0.152 48);
+  --risk-medium: oklch(79% 0.135 82);
+  --risk-low: oklch(72% 0.093 148);
+  --risk-info: oklch(72% 0.052 236);
+
+  --risk-critical-wash: oklch(64% 0.178 22 / 0.15);
+  --risk-high-wash: oklch(69% 0.152 48 / 0.14);
+  --risk-medium-wash: oklch(79% 0.135 82 / 0.13);
+  --risk-low-wash: oklch(72% 0.093 148 / 0.13);
+  --risk-info-wash: oklch(72% 0.052 236 / 0.14);
+
+  /* ── Status ──────────────────────────────────────────────────────────── */
+  --status-success: oklch(74% 0.11 152);
+  --status-warning: oklch(79% 0.132 80);
+  --status-info: oklch(72% 0.052 236);
+  --status-neutral: oklch(63% 0.014 143);
+  --status-success-wash: oklch(74% 0.11 152 / 0.14);
+  --status-warning-wash: oklch(79% 0.132 80 / 0.13);
+  --status-info-wash: oklch(72% 0.052 236 / 0.14);
+  --status-neutral-wash: oklch(63% 0.014 143 / 0.12);
+
+  --focus: oklch(83% 0.155 110);
+
+  /* ── Type ────────────────────────────────────────────────────────────── */
+  --font-display: 'Space Grotesk', 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-body: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+
+  --text-2xs: 0.6875rem; /* 11 */
+  --text-xs: 0.75rem; /* 12 */
+  --text-sm: 0.8125rem; /* 13 */
+  --text-md: 0.875rem; /* 14 */
+  --text-base: 0.9375rem; /* 15 */
+  --text-lg: 1.0625rem; /* 17 */
+  --text-xl: 1.3125rem; /* 21 */
+  --text-2xl: 1.625rem; /* 26 */
+  --text-3xl: 2.125rem; /* 34 */
+  --text-display: 2.75rem; /* 44 */
+
+  --leading-tight: 1.15;
+  --leading-snug: 1.35;
+  --leading-normal: 1.55;
+  --leading-relaxed: 1.7;
+
+  --tracking-display: -0.022em;
+  --tracking-tight: -0.011em;
+  --tracking-label: 0.07em;
+
+  /* ── Space · 4pt scale ───────────────────────────────────────────────── */
+  --space-3xs: 0.125rem; /*  2 */
+  --space-2xs: 0.25rem; /*  4 */
+  --space-xs: 0.5rem; /*  8 */
+  --space-sm: 0.75rem; /* 12 */
+  --space-md: 1rem; /* 16 */
+  --space-lg: 1.5rem; /* 24 */
+  --space-xl: 2rem; /* 32 */
+  --space-2xl: 3rem; /* 48 */
+  --space-3xl: 4.5rem; /* 72 */
+
+  /* ── Radii · tighter than consumer SaaS ──────────────────────────────── */
+  --radius-xs: 2px;
+  --radius-sm: 3px;
+  --radius-md: 5px;
+  --radius-lg: 8px;
+  --radius-pill: 999px;
+
+  /* ── Rules ───────────────────────────────────────────────────────────── */
+  --rule-hair: 1px;
+  --rule-thick: 2px;
+
+  /* ── Depth · dark scrim shadows only, never a coloured glow ──────────── */
+  --shadow-raise: 0 1px 2px oklch(6% 0.01 145 / 0.5);
+  --shadow-overlay: 0 24px 64px oklch(5% 0.008 145 / 0.6);
+
+  /* ── Motion ──────────────────────────────────────────────────────────── */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-micro: 120ms;
+  --dur-short: 220ms;
+  --dur-long: 420ms;
+
+  /* ── Z scale ─────────────────────────────────────────────────────────── */
+  --z-base: 1;
+  --z-raised: 10;
+  --z-dropdown: 100;
+  --z-popover: 150;
+  --z-sticky: 200;
+  --z-modal: 400;
+  --z-toast: 500;
+  --z-tooltip: 600;
+
+  /* ── Shell metrics ───────────────────────────────────────────────────── */
+  --sidebar-w: 15.5rem; /* 248 */
+  --sidebar-w-collapsed: 3.5rem; /* 56 */
+  --topbar-h: 3.25rem; /* 52 */
+  --panel-w: 26rem; /* 416 */
+  --detail-w: 21rem; /* 336 */
+  --toc-w: 12.5rem; /* 200 */
+}

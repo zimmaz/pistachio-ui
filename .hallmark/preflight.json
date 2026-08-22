@@ -1,0 +1,11 @@
+{
+  "scanned": "2026-08-22",
+  "framework": "React 18 + Vite 6 + TypeScript",
+  "routing": "react-router-dom v6",
+  "icons": "lucide-react",
+  "css": "plain CSS custom properties (tokens.css)",
+  "motion": "none — motion-cut",
+  "fonts": "Space Grotesk + Inter + JetBrains Mono",
+  "palette": "custom OKLCH forest/pistachio tokens",
+  "preserved": ["React", "Vite", "react-router-dom", "lucide-react", "plain CSS tokens"]
+}

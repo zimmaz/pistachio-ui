@@ -1,0 +1,533 @@
+/* Visualisations. Every one of these answers a security question; none of them
+   are decoration. */
+
+/* ── Severity distribution ─────────────────────────────────────────────── */
+
+.sevDist {
+  display: grid;
+  gap: var(--space-sm);
+}
+
+.sevDist__bar {
+  display: flex;
+  gap: 2px;
+  height: 0.5rem;
+  border-radius: var(--radius-xs);
+  overflow: hidden;
+}
+
+.sevDist__seg {
+  display: block;
+  min-width: 3px;
+  transition: opacity var(--dur-short) var(--ease-out);
+}
+
+.sevDist__seg--critical {
+  background: var(--risk-critical);
+}
+.sevDist__seg--high {
+  background: var(--risk-high);
+}
+.sevDist__seg--medium {
+  background: var(--risk-medium);
+}
+.sevDist__seg--low {
+  background: var(--risk-low);
+}
+
+.sevDist__rows {
+  display: grid;
+  gap: 1px;
+}
+
+.sevDist__row {
+  display: grid;
+  grid-template-columns: 0.625rem minmax(0, 1fr) 3rem 3rem;
+  gap: var(--space-xs);
+  align-items: center;
+  width: 100%;
+  padding: 0.25rem var(--space-2xs);
+  border-radius: var(--radius-xs);
+  text-align: left;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  transition: background var(--dur-micro) var(--ease-out);
+}
+
+button.sevDist__row:hover {
+  background: var(--surface-2);
+}
+
+.sevDist__row.is-selected {
+  background: var(--surface-3);
+}
+
+.sevDist__swatch {
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 2px;
+}
+
+.sevDist__swatch--critical {
+  background: var(--risk-critical);
+}
+.sevDist__swatch--high {
+  background: var(--risk-high);
+}
+.sevDist__swatch--medium {
+  background: var(--risk-medium);
+}
+.sevDist__swatch--low {
+  background: var(--risk-low);
+}
+
+.sevDist__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sevDist__count {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  text-align: right;
+}
+
+.sevDist__share {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--text-faint);
+  text-align: right;
+}
+
+/* ── Coverage meter ────────────────────────────────────────────────────── */
+
+.coverage {
+  display: grid;
+  gap: var(--space-2xs);
+  align-content: start;
+}
+
+.coverage__top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+
+.coverage__label {
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.coverage__value {
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.coverage__track {
+  height: 0.375rem;
+  border-radius: var(--radius-xs);
+  background: var(--surface-3);
+  overflow: hidden;
+}
+
+.coverage__fill {
+  display: block;
+  block-size: 100%;
+  background: var(--brand-muted);
+  border-right: 2px solid var(--brand-emphasis);
+}
+
+.coverage__caption {
+  font-size: var(--text-2xs);
+  color: var(--text-muted);
+  line-height: var(--leading-snug);
+}
+
+/* ── Architecture graph ────────────────────────────────────────────────── */
+
+.archGraph {
+  width: 100%;
+  height: auto;
+  font-family: var(--font-body);
+}
+
+.archGraph__boundary line {
+  stroke: var(--border-accent);
+  stroke-width: 1;
+  stroke-dasharray: 5 4;
+  opacity: 0.85;
+}
+
+.archGraph__boundary text {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  fill: var(--text-faint);
+  text-transform: uppercase;
+}
+
+.archGraph__edge {
+  color: var(--border-strong);
+}
+
+.archGraph__edge path {
+  fill: none;
+  stroke: var(--border-strong);
+  stroke-width: 1.25;
+  transition:
+    stroke var(--dur-short) var(--ease-out),
+    color var(--dur-short) var(--ease-out);
+}
+
+.archGraph__edge.is-new {
+  color: var(--brand-muted);
+}
+
+.archGraph__edge.is-new path {
+  stroke: var(--brand-muted);
+}
+
+.archGraph__edge.is-risky {
+  color: var(--risk-high);
+}
+
+.archGraph__edge.is-risky path {
+  stroke: var(--risk-high);
+  stroke-width: 1.75;
+  stroke-dasharray: 6 3;
+}
+
+.archGraph__box {
+  fill: var(--surface-2);
+  stroke: var(--border-strong);
+  stroke-width: 1;
+  transition:
+    fill var(--dur-short) var(--ease-out),
+    stroke var(--dur-short) var(--ease-out);
+}
+
+.archGraph__node--actor .archGraph__box {
+  fill: var(--surface-inset);
+  stroke-dasharray: 4 3;
+}
+
+.archGraph__kindRule {
+  stroke: var(--border-strong);
+  stroke-width: 1;
+}
+
+.archGraph__exposure {
+  fill: var(--risk-high);
+}
+
+.archGraph__name {
+  font-size: 12px;
+  font-weight: 600;
+  fill: var(--text-primary);
+  letter-spacing: -0.005em;
+}
+
+.archGraph--compact .archGraph__name {
+  font-size: 10.5px;
+}
+
+.archGraph__meta {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  fill: var(--text-faint);
+}
+
+.archGraph__new {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  letter-spacing: 0.08em;
+  fill: var(--brand-emphasis);
+}
+
+.archGraph__focus {
+  fill: none;
+  stroke: none;
+}
+
+.archGraph__node.is-interactive {
+  cursor: pointer;
+}
+
+.archGraph__node.is-interactive:hover .archGraph__box {
+  fill: var(--surface-3);
+  stroke: var(--border-accent);
+}
+
+.archGraph__node.is-inPath .archGraph__box {
+  stroke: var(--risk-high);
+}
+
+.archGraph__node.is-selected .archGraph__box {
+  fill: var(--surface-raised);
+  stroke: var(--brand-emphasis);
+  stroke-width: 1.75;
+}
+
+.archGraph__node:focus {
+  outline: none;
+}
+
+.archGraph__node:focus-visible .archGraph__focus {
+  stroke: var(--focus);
+  stroke-width: 2;
+  transform: scale(1);
+}
+
+.graphLegend {
+  display: flex;
+  gap: var(--space-md);
+  flex-wrap: wrap;
+  font-size: var(--text-2xs);
+  color: var(--text-muted);
+}
+
+.graphLegend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.graphLegend__swatch {
+  width: 0.875rem;
+  height: 0;
+  border-top: 2px solid var(--border-strong);
+}
+
+.graphLegend__swatch--boundary {
+  border-top: 1px dashed var(--border-accent);
+}
+
+.graphLegend__swatch--exposed {
+  width: 3px;
+  height: 0.75rem;
+  border: 0;
+  background: var(--risk-high);
+  border-radius: 1.5px;
+}
+
+.graphLegend__swatch--new {
+  border-top-color: var(--brand-muted);
+}
+
+.graphLegend__swatch--risky {
+  border-top: 2px dashed var(--risk-high);
+}
+
+/* ── Attack path ───────────────────────────────────────────────────────── */
+
+.attackPath {
+  display: grid;
+  gap: 0;
+}
+
+.attackStep {
+  display: grid;
+  grid-template-columns: 5.5rem 1rem minmax(0, 1fr);
+  gap: var(--space-sm);
+  align-items: start;
+}
+
+.attackPath--compact .attackStep {
+  grid-template-columns: 4.25rem 0.75rem minmax(0, 1fr);
+  gap: var(--space-xs);
+}
+
+.attackStep__layer {
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-faint);
+  text-align: right;
+  padding-top: 0.375rem;
+}
+
+.attackStep__rail {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  height: 100%;
+  min-height: 2rem;
+}
+
+.attackStep__marker {
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-top: 0.5rem;
+  background: var(--surface-raised);
+  border: var(--rule-hair) solid var(--border-strong);
+  flex: none;
+  z-index: var(--z-base);
+}
+
+.attackStep__marker--actor {
+  border-radius: 50%;
+  border-color: var(--risk-critical);
+  background: var(--risk-critical);
+}
+
+.attackStep__marker--technique {
+  transform: rotate(45deg);
+  border-color: var(--risk-high);
+  background: var(--risk-high-wash);
+}
+
+.attackStep__marker--component {
+  border-radius: 1px;
+  border-color: var(--text-muted);
+}
+
+.attackStep__marker--privilege {
+  border-radius: 1px;
+  border-color: var(--status-warning);
+  background: var(--status-warning-wash);
+}
+
+.attackStep__marker--asset {
+  border-radius: 50%;
+  border-color: var(--brand-emphasis);
+  background: var(--brand-emphasis);
+}
+
+.attackStep__line {
+  position: absolute;
+  top: 1rem;
+  bottom: -0.25rem;
+  width: var(--rule-hair);
+  background: linear-gradient(to bottom, var(--border-strong) 60%, transparent 60%);
+  background-size: 1px 6px;
+}
+
+.attackStep__body {
+  display: grid;
+  gap: var(--space-2xs);
+  width: 100%;
+  min-width: 0;
+  padding: 0.3125rem var(--space-xs) var(--space-sm);
+  border-radius: var(--radius-sm);
+  text-align: left;
+  transition: background var(--dur-micro) var(--ease-out);
+}
+
+.attackStep__toggle {
+  display: block;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--radius-xs);
+}
+
+.attackStep__toggle:hover .attackStep__label {
+  color: var(--brand);
+}
+
+.attackStep.is-selected > .attackStep__body {
+  background: var(--surface-2);
+}
+
+.attackStep.is-terminal .attackStep__label {
+  color: var(--brand-emphasis);
+}
+
+.attackStep__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+}
+
+.attackStep__label {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.attackPath--compact .attackStep__label {
+  font-size: var(--text-xs);
+  font-weight: 500;
+}
+
+.attackStep__gap {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: var(--text-2xs);
+  color: var(--risk-high);
+}
+
+.attackStep__detail {
+  display: grid;
+  gap: var(--space-xs);
+}
+
+.attackStep__text {
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+  color: var(--text-muted);
+  max-width: 68ch;
+}
+
+.attackStep__entity {
+  font-size: var(--text-2xs);
+}
+
+.attackStep__controls {
+  display: flex;
+  gap: var(--space-2xs);
+  flex-wrap: wrap;
+}
+
+.controlChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3125rem;
+  height: 1.25rem;
+  padding: 0 var(--space-xs);
+  border-radius: var(--radius-xs);
+  border: var(--rule-hair) solid var(--border);
+  font-size: var(--text-2xs);
+  white-space: nowrap;
+}
+
+.controlChip.is-effective {
+  color: var(--status-success);
+  border-color: var(--status-success-ring);
+  background: var(--status-success-wash);
+}
+
+.controlChip.is-broken {
+  color: var(--risk-high);
+  border-color: var(--risk-high-ring);
+  background: var(--risk-high-wash);
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+  text-decoration-color: var(--risk-high-strike);
+}
+
+.controlChip__id {
+  font-family: var(--font-mono);
+}
+
+.controlChip__name {
+  color: var(--text-muted);
+}
+
+.controlChip.is-broken .controlChip__name,
+.controlChip.is-effective .controlChip__name {
+  color: inherit;
+  opacity: 0.85;
+}
